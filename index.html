@@ -480,6 +480,8 @@ function openRoom(code){
     if (!snap.metadata.fromCache){ clearTimeout(loadTimer); loadNote=""; }
     if (!snap.exists){ if (!snap.metadata.fromCache){ leaveRoom(`Room ${code} doesn't exist any more.`); } return; }
     const next = snap.data();
+    // The server confirming a write we already show changes nothing; redrawing would cut animations short.
+    if (S && next.seq === S.seq && JSON.stringify(next) === JSON.stringify(S)) return;
     // Someone who just joined sees the first deal as if they'd been waiting at the table.
     let prev = S;
     if (!prev && justJoined){ prev = { phase:"waiting", round:0, seq:-1, turn:-1, hands:[[],[]] }; }
@@ -703,6 +705,7 @@ function soundTransition(prev, next){
   else if (next.phase === "playing" && next.turn === me && (prev.turn !== me || newRound)) sfx.play("turn", t + .15);
 }
 
+const newRoundOf = (prev, next) => prev.round !== next.round || prev.phase === "waiting";
 let animating = 0;
 async function animateTransition(prev, next, before){
   if (!motionOK() || !before) return;
@@ -710,8 +713,17 @@ async function animateTransition(prev, next, before){
   animating++;
   try {
     const after = snapRects();
+    // Find newly dealt cards now and hide them, so they never show in place before flying in.
+    const prevHand = newRoundOf(prev, next) ? [] : (prev.hands[me] || []);
+    const opBefore = newRoundOf(prev, next) ? 0 : (prev.hands[1-me] || []).length;
+    const myNew = [...app.querySelectorAll("#hand button.card")].filter(el => !prevHand.includes(el.dataset.card));
+    const opBacks = [...app.querySelectorAll("#oppHand .back")].slice(opBefore);
+    const tableNew = newRoundOf(prev, next) ? [...app.querySelectorAll("#table button.card")] : [];
+    const dealing = myNew.length > 1 || opBacks.length > 1;
+    const toDeal = [...tableNew, ...(dealing ? [...myNew, ...opBacks] : [])];
+    toDeal.forEach(el => { el.style.visibility = "hidden"; });
     const cw = tableCardWidth();
-    const newRound = prev.round !== next.round || prev.phase === "waiting";
+    const newRound = newRoundOf(prev, next);
     // Cards that only moved (table reflow) slide to their new place.
     if (!newRound) for (const [c, r] of Object.entries(before.cards)){
       const el = app.querySelector(`button.card[data-card="${c}"]`);
@@ -753,20 +765,16 @@ async function animateTransition(prev, next, before){
     }
     // Deals: new cards come off the deck, one at a time.
     const deckR = after.deck || before.deck;
-    if (deckR){
-      const from = boxIn(deckR, 38);
-      let i = 0;
-      if (newRound) for (const el of app.querySelectorAll("#table button.card")) flyFrom(el, from, { duration:460, delay: dealDelay + (i++)*110, rotate:-6 });
-      const prevHand = newRound ? [] : (prev.hands[me] || []);
-      const opBefore = newRound ? 0 : (prev.hands[1-me] || []).length;
-      const myNew = [...app.querySelectorAll("#hand button.card")].filter(el => !prevHand.includes(el.dataset.card));
-      const opBacks = [...app.querySelectorAll("#oppHand .back")].slice(opBefore);
-      if (myNew.length > 1 || opBacks.length > 1){
-        const order = []; for (let k=0; k<3; k++){ if (opBacks[k]) order.push(opBacks[k]); if (myNew[k]) order.push(myNew[k]); }
-        order.forEach(el => flyFrom(el, from, { duration:440, delay: dealDelay + (i++)*110, rotate: el.classList.contains("back") ? 10 : -10 }));
-      }
+    const from = boxIn(deckR, 38);
+    const reveal = (el, opts) => { if (!el.isConnected) return; el.style.visibility = ""; if (from) flyFrom(el, from, opts); };
+    let i = 0;
+    for (const el of tableNew) reveal(el, { duration:460, delay: dealDelay + (i++)*110, rotate:-6 });
+    if (dealing){
+      const order = []; for (let k=0; k<3; k++){ if (opBacks[k]) order.push(opBacks[k]); if (myNew[k]) order.push(myNew[k]); }
+      order.forEach(el => reveal(el, { duration:440, delay: dealDelay + (i++)*110, rotate: el.classList.contains("back") ? 10 : -10 }));
     }
-  } finally { animating--; }
+  } catch(e){ console.error(e); app.querySelectorAll("[style*='visibility']").forEach(el => { el.style.visibility = ""; }); }
+  finally { animating--; }
 }
 
 function renderGame(me){
