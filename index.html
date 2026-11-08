@@ -4,7 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="description" content="A private two-player Scopa napoletana table. Make a room, share the code, play at your own pace.">
-<link rel="icon" href="cards/denari-asso.webp">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#0e2c29">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Scopa">
 <title>Scopa a Due</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700;800&family=Alegreya+Sans:wght@400;500;700&display=swap">
@@ -23,7 +30,11 @@
 html,body{height:100%}
 body{background:radial-gradient(120% 80% at 50% 40%, var(--felt) 0%, var(--felt-deep) 100%) fixed, var(--felt-deep);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.4}
 *{box-sizing:border-box}
-button{font:inherit;color:inherit;cursor:pointer}
+button{font:inherit;color:inherit;cursor:pointer;touch-action:manipulation}
+html{-webkit-tap-highlight-color:transparent}
+@media (display-mode: standalone){body{overscroll-behavior-y:none}}
+.install{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.install p{margin:0;flex:1;min-width:0}
 button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .wrap{max-width:760px;margin:0 auto;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:12px 24px;display:flex;flex-direction:column;gap:14px;min-height:100%}
 h1,h2,h3{font-family:var(--display);font-weight:700;margin:0;text-wrap:balance;letter-spacing:.01em}
@@ -363,6 +374,27 @@ async function boot(){
   else renderLobby(/^[A-Z]{4}$/.test(fromHash) ? fromHash : "");
 }
 
+// ---------- install as an app ----------
+let installEvent = null;
+const standalone = () => matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
+addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvent = e; renderInstall(); });
+addEventListener("appinstalled", () => { installEvent = null; renderInstall(); toast("Scopa is installed. Open it from your home screen."); });
+function renderInstall(){
+  const el = document.getElementById("installPanel"); if (!el) return;
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  if (standalone() || store.get("installHidden")){ el.hidden = true; return; }
+  if (installEvent){
+    el.innerHTML = `<p><b>Install Scopa</b><br><span class="muted">Add it to your home screen to open it like an app.</span></p><button class="btn primary" id="installBtn">Install</button><button class="linkish" id="installHide">Not now</button>`;
+  } else if (ios){
+    el.innerHTML = `<p><b>Add Scopa to your home screen</b><br><span class="muted">In Safari, tap the Share button, then <b>Add to Home Screen</b>.</span></p><button class="linkish" id="installHide">Hide</button>`;
+  } else { el.hidden = true; return; }
+  el.hidden = false;
+  const ib = document.getElementById("installBtn");
+  if (ib) ib.onclick = async () => { const e = installEvent; installEvent = null; e.prompt(); try { await e.userChoice; } catch {} renderInstall(); };
+  document.getElementById("installHide").onclick = () => { store.set("installHidden", "1"); el.hidden = true; };
+}
+if ("serviceWorker" in navigator) addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+
 function renderNoDb(){
   app.innerHTML = `<div class="hero"><span class="label">Scopa napoletana · for two</span><h1>Scopa a Due</h1>
   <p>Couldn't reach the card table server. Check your connection, then reload the page.</p><div><button class="btn primary" onclick="location.reload()">Reload</button></div></div>`;
@@ -379,6 +411,7 @@ function renderLobby(prefill){
     <p class="muted">A private table for two. Make a room, send your partner the four-letter code, and play at your own pace. Nothing is highlighted and nothing times out.</p>
     <div class="fan" aria-hidden="true">${fanCards.map((c,i)=>cardHTML(c,{cls:""}).replace('class="card','style="--r:'+((i-2)*7)+'deg" class="card')).join("")}</div>
   </div>
+  <div class="panel install" id="installPanel" hidden></div>
   ${canWrite===false ? `<p class="err" style="text-align:left">You can open this page but can't play on it yet. Ask the person who shared it to invite you as an Editor.</p>` : ""}
   <div class="panel">
     <div class="field"><label for="nm" class="label">Your name at the table</label>
@@ -407,6 +440,7 @@ function renderLobby(prefill){
   document.getElementById("joinBtn").onclick = () => joinRoom(codeEl.value);
   codeEl.addEventListener("keydown", e => { if (e.key==="Enter") joinRoom(codeEl.value); });
   document.getElementById("createBtn").onclick = createRoom;
+  renderInstall();
 }
 function myName(){ return (document.getElementById("nm")?.value.trim() || store.get("name") || "Player").slice(0,18); }
 
