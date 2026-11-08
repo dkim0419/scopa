@@ -546,6 +546,7 @@ function render(){
     document.getElementById("leave").onclick = () => leaveRoom(); return; }
   const me = mySeat();
   if (S.phase==="waiting") return renderWaiting(me);
+  if (S.phase==="ended") return renderEnded(me);
   if (me < 0) return renderSpectator();
   renderGame(me);
   if (S.phase==="review" && Date.now() < holdReviewUntil) return;
@@ -561,14 +562,14 @@ function headerHTML(me){
       <span>${esc(nameOf(b))} <b>${S.scores[b]}</b></span>
       <span class="muted">to ${S.target}</span>
     </div>
-    <div class="row"><button class="btn small" id="soundBtn" aria-pressed="${sfx.on}">${sfx.on ? "Sound on" : "Sound off"}</button><button class="btn small" id="rulesBtn">Rules</button><button class="btn small" id="leave">Leave</button></div>
+    <div class="row"><button class="btn small" id="soundBtn" aria-pressed="${sfx.on}">${sfx.on ? "Sound on" : "Sound off"}</button><button class="btn small" id="rulesBtn">Rules</button><button class="btn small" id="leave">${S.phase==="waiting" ? "Cancel" : "End game"}</button></div>
   </div>${loadNote?`<div class="err">${esc(loadNote)}</div>`:""}`;
 }
 function wireHeader(){
   const cc = document.getElementById("copyCode");
   if (cc) cc.onclick = async () => { try { await navigator.clipboard.writeText(S.code); toast("Room code copied."); } catch { toast("Room code: " + S.code); } };
   const lv = document.getElementById("leave");
-  if (lv) lv.onclick = () => leaveRoom("You left the table. Join again any time with code " + S.code + ".");
+  if (lv) lv.onclick = () => S.phase==="waiting" || mySeat()<0 ? leaveRoom() : showEndSheet();
   const sb = document.getElementById("soundBtn");
   if (sb) sb.onclick = () => { const on = sfx.toggle(); sb.textContent = on ? "Sound on" : "Sound off"; sb.setAttribute("aria-pressed", on); if (on) sfx.play("turn"); };
   const rb = document.getElementById("rulesBtn");
@@ -584,6 +585,57 @@ function showRules(){
   o.querySelector("#closeRules").onclick = () => o.remove();
   o.querySelector("#numsToggle").onchange = e => { const on = e.target.checked; document.body.classList.toggle("no-nums", !on); store.set("nums", on ? null : "off"); };
   o.querySelector("#closeRules").focus();
+}
+
+// ---------- ending a game ----------
+function showEndSheet(){
+  const me = mySeat(); if (me < 0 || !S) return;
+  document.querySelectorAll(".overlay.endsheet").forEach(x => x.remove());
+  const op = other(me);
+  const o = document.createElement("div"); o.className = "overlay endsheet"; o.style.zIndex = 25;
+  o.setAttribute("role","dialog"); o.setAttribute("aria-label","End game");
+  o.innerHTML = `<div class="sheet">
+    <h2>End this game?</h2>
+    <p style="margin:0">The game ends for both of you, and ${esc(nameOf(op))} sees that you ended it. The score stays at <b>You ${S.scores[me]} · ${esc(nameOf(op))} ${S.scores[op]}</b>.</p>
+    <div class="row"><button class="btn primary" id="endYes">End game</button><button class="btn" id="endNo">Keep playing</button></div>
+    <div class="panel" style="gap:8px"><b>Just stepping away?</b><span class="muted">Leave without ending. The game waits, and you can come back with code <b>${esc(S.code)}</b>.</span><div><button class="btn small" id="endLeave">Leave for now</button></div></div>
+  </div>`;
+  document.body.appendChild(o);
+  o.querySelector("#endNo").onclick = () => o.remove();
+  o.querySelector("#endNo").focus();
+  o.querySelector("#endLeave").onclick = () => { o.remove(); leaveRoom("You left the table. Come back any time with code " + S.code + "."); };
+  o.querySelector("#endYes").onclick = async () => {
+    const b = o.querySelector("#endYes"); b.disabled = true; b.textContent = "Ending…";
+    try {
+      await roomRef(roomCode).transact(cur => {
+        if (!cur || cur.phase === "ended") return null;
+        const s = structuredClone(cur);
+        s.phase = "ended"; s.endedBy = me; s.seq = (s.seq||0) + 1;
+        return s;
+      });
+      o.remove();
+    } catch(e){ b.disabled = false; b.textContent = "End game"; writeFail(e); }
+  };
+}
+
+function renderEnded(me){
+  document.querySelectorAll(".overlay.endsheet").forEach(x => x.remove());
+  store.set("room", null); // a finished game isn't reopened on the next visit
+  const a = me < 0 ? 0 : me, b = other(a);
+  const [x, y] = [S.scores[a], S.scores[b]];
+  const byMe = S.endedBy === me;
+  const lead = x === y ? "It finished level." : (x > y ? (me < 0 ? esc(nameOf(a)) + " was ahead." : "You were ahead.") : esc(nameOf(b)) + " was ahead.");
+  app.innerHTML = `${headerHTML(me)}
+  <div class="panel" style="align-items:center;text-align:center;gap:14px;padding-block:28px">
+    <span class="label">Game over</span>
+    <h2 style="font-size:30px">${byMe ? "You ended the game" : esc(nameOf(S.endedBy)) + " ended the game"}</h2>
+    <div style="font-family:var(--display);font-size:44px;line-height:1;font-variant-numeric:tabular-nums">${x} – ${y}</div>
+    <p class="muted" style="margin:0">${me < 0 ? esc(nameOf(a)) : "You"} ${x} · ${esc(nameOf(b))} ${y}. ${lead}</p>
+    <button class="btn primary" id="toLobby">Back to the lobby</button>
+  </div>`;
+  wireHeader();
+  const lv = document.getElementById("leave"); if (lv) lv.hidden = true;
+  document.getElementById("toLobby").onclick = () => leaveRoom();
 }
 
 function renderWaiting(me){
@@ -716,7 +768,7 @@ const sfx = (() => {
 
 // Sounds follow the same timeline as the animations (in seconds).
 function soundTransition(prev, next){
-  const me = mySeat(); if (me < 0) return;
+  const me = mySeat(); if (me < 0 || next.phase === "ended") return;
   const newRound = prev.round !== next.round || prev.phase === "waiting";
   const m = next.lastMove;
   let t = 0;
@@ -742,6 +794,7 @@ function soundTransition(prev, next){
 const newRoundOf = (prev, next) => prev.round !== next.round || prev.phase === "waiting";
 let animating = 0;
 async function animateTransition(prev, next, before){
+  if (next.phase === "ended") return;
   if (!motionOK() || !before) return;
   const me = mySeat(); if (me < 0) return;
   animating++;
@@ -897,6 +950,7 @@ function renderReview(me){
     <details><summary>Cards ${esc(nameOf(op))} took (${S.captured[op].length})</summary><div style="margin-top:10px">${minis(sortCards(S.captured[op]))}</div></details>
     <div class="row">
       <button class="btn primary" id="readyBtn" ${iReady?"disabled":""}>${iReady ? (r.gameOver?"Waiting to start a new game…":"Waiting for " + esc(nameOf(op)) + "…") : (r.gameOver ? "Play again" : "Next round")}</button>
+      <button class="btn" id="endFromReview">End game</button>
       <span class="muted">${theyReady ? esc(nameOf(op)) + " is ready." : esc(nameOf(op)) + " is still reviewing."}</span>
     </div>
     <p class="detail" style="margin:0">Take your time. The next round starts only when you both tap ${r.gameOver?"Play again":"Next round"}.</p>
@@ -911,6 +965,7 @@ function renderReview(me){
   o.classList.add("review");
   document.body.appendChild(o);
   o.querySelector("#readyBtn").onclick = markReady;
+  o.querySelector("#endFromReview").onclick = showEndSheet;
 }
 function sortCards(list){ const order="DCSB"; return list.slice().sort((a,b)=> order.indexOf(suit(a))-order.indexOf(suit(b)) || val(a)-val(b)); }
 
