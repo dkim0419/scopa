@@ -76,18 +76,11 @@ h1,h2,h3{font-family:var(--display);font-weight:700;margin:0;text-wrap:balance;l
 .tablezone{border:1px solid var(--felt-line);border-radius:18px;padding:14px 10px;min-height:calc(var(--tw) * 1.55 + 28px);display:flex;flex-wrap:wrap;gap:14px 8px;justify-content:center;align-content:center;background:rgba(0,0,0,.10);position:relative}
 .tablezone .empty{color:var(--muted);font-style:italic;align-self:center}
 /* deck + piles */
-.deckbar{display:flex;align-items:center;gap:14px;padding:10px 12px;border:1px solid var(--felt-line);border-radius:14px;background:rgba(0,0,0,.16)}
-.deck{position:relative;width:46px;aspect-ratio:250/388;flex:none}
-.deck .back{position:absolute;inset:0;width:100%;--w:46px;transform:translate(calc(var(--i) * -1.5px), calc(var(--i) * -1.5px))}
+.deck{position:relative;width:38px;aspect-ratio:250/388;flex:none;margin:0 8px 6px 0}
+.deck .back{position:absolute;inset:0;width:100%;--w:38px;transform:translate(calc(var(--i) * -1.5px), calc(var(--i) * -1.5px))}
 .deck.empty{border:2px dashed var(--felt-line);border-radius:4px}
-.deck .cnt{position:absolute;right:-8px;bottom:-8px;z-index:5;min-width:26px;height:26px;padding:0 6px;border-radius:13px;background:var(--accent);color:#2a1f08;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;box-shadow:0 2px 6px rgba(0,0,0,.4)}
-.deckcopy{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
-.deckcopy .big{font-family:var(--display);font-size:20px;line-height:1.1}
-.hands{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
-.hands i{width:16px;height:6px;border-radius:3px;background:rgba(255,255,255,.14);display:block}
-.hands i.done{background:var(--muted)}
-.hands i.now{background:var(--accent);box-shadow:0 0 0 2px rgba(240,197,82,.25)}
-.hands small{color:var(--muted);font-size:13px;margin-left:4px}
+.deck .cnt{position:absolute;right:-9px;bottom:-9px;z-index:5;min-width:26px;height:26px;padding:0 6px;border-radius:13px;background:var(--accent);color:#2a1f08;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.deck.empty .cnt{background:var(--felt-line);color:var(--ink)}
 .pile{position:relative;width:30px;aspect-ratio:250/388;flex:none}
 .pile .back{position:absolute;inset:0;--w:30px;width:100%;transform:rotate(var(--r))}
 .pile.none{border:1px dashed var(--felt-line);border-radius:3px}
@@ -579,23 +572,9 @@ function moveText(m, me){
   return t;
 }
 
-// 40 cards: 4 on the table, then 6 hands of 3 cards each per player.
-const HANDS_PER_ROUND = 6;
 function deckHTML(){
-  const n = S.deck.length;
-  const hand = Math.min(HANDS_PER_ROUND, HANDS_PER_ROUND - Math.ceil(n / 6) );
-  const layers = Math.min(6, Math.ceil(n / 6));
-  const meter = Array.from({length:HANDS_PER_ROUND}, (_,i) => `<i class="${i<hand-1?"done":i===hand-1?"now":""}"></i>`).join("");
-  const deals = n / 6;
-  const line = n === 0
-    ? "Deck empty: this is the last hand."
-    : `${deals} more deal${deals===1?"":"s"} of 3 cards each`;
-  return `<div class="deckbar" aria-label="${n} cards left in the deck">
-    <div class="deck ${n?"":"empty"}" id="deck">${Array.from({length:layers},(_,i)=>`<div class="back" style="--i:${i}"></div>`).join("")}${n?`<span class="cnt">${n}</span>`:""}</div>
-    <div class="deckcopy"><span class="big">${n ? `${n} card${n===1?"":"s"} left in the deck` : "No cards left in the deck"}</span>
-      <span class="muted">${line}</span>
-      <div class="hands" title="Hands this round">${meter}<small>hand ${hand} of ${HANDS_PER_ROUND} · round ${S.round}</small></div></div>
-  </div>`;
+  const n = S.deck.length, layers = Math.min(5, Math.ceil(n / 6));
+  return `<div class="deck ${n?"":"empty"}" id="deck" role="img" aria-label="${n} cards left in the deck" title="${n} cards left in the deck">${Array.from({length:layers},(_,i)=>`<div class="back" style="--i:${i}"></div>`).join("")}<span class="cnt">${n}</span></div>`;
 }
 function pileHTML(id, n){
   if (!n) return `<div class="pile none" id="${id}" aria-hidden="true"></div>`;
@@ -696,7 +675,7 @@ async function animateTransition(prev, next, before){
     // Deals: new cards come off the deck, one at a time.
     const deckR = after.deck || before.deck;
     if (deckR){
-      const from = boxIn(deckR, 46);
+      const from = boxIn(deckR, 38);
       let i = 0;
       if (newRound) for (const el of app.querySelectorAll("#table button.card")) flyFrom(el, from, { duration:460, delay: dealDelay + (i++)*110, rotate:-6 });
       const prevHand = newRound ? [] : (prev.hands[me] || []);
@@ -724,11 +703,11 @@ function renderGame(me){
   <div class="seat">
     <div class="side">${pileHTML("pile-op", S.captured[op].length)}
     <div class="who"><strong>${esc(nameOf(op))}</strong>
-      <div class="stats"><span><b>${S.captured[op].length}</b> taken</span><span><b>${S.scope[op]}</b> scop${S.scope[op]===1?"a":"e"}</span></div></div></div>
-    <div class="backs" id="oppHand" aria-label="${S.hands[op].length} cards in hand">${S.hands[op].map(()=>`<div class="back"></div>`).join("")}</div>
+      <div class="stats"><span><b>${S.captured[op].length}</b> taken</span><span><b>${S.scope[op]}</b> scop${S.scope[op]===1?"a":"e"}</span></div></div>
+    <div class="backs" id="oppHand" aria-label="${esc(nameOf(op))} has ${S.hands[op].length} cards in hand">${S.hands[op].map(()=>`<div class="back"></div>`).join("")}</div></div>
+    ${deckHTML()}
   </div>
   <div class="lastmove" aria-live="polite">${moveText(lm, me)}</div>
-  ${deckHTML()}
   <div class="tablezone" id="table">${tableHTML}</div>
   <div class="status ${myTurn?"mine":""}">${S.phase!=="playing" ? "Round over" : myTurn ? "Your turn" : `Waiting for ${esc(nameOf(op))}…`}</div>
   <div class="hand" id="hand">${hand.map(c => cardHTML(c, { button:true, zone:"hand", disabled:!myTurn, cls:"hand-card " + (sel.hand===c?"sel":"") })).join("")}</div>
@@ -742,14 +721,11 @@ function renderGame(me){
     <div class="side">${pileHTML("pile-me", S.captured[me].length)}
     <div class="who"><strong>${esc(nameOf(me))} <span class="muted" style="font-family:var(--body);font-size:14px">(you)</span></strong>
       <div class="stats"><span><b>${S.captured[me].length}</b> taken</span><span><b>${S.scope[me]}</b> scop${S.scope[me]===1?"a":"e"}</span></div></div></div>
-    <button class="linkish" id="mineBtn">See cards you've taken</button>
-  </div>
-  <div id="mine" hidden>${S.captured[me].length ? minis(S.captured[me]) : `<span class="muted">Nothing yet.</span>`}</div>`;
+  </div>`;
   wireHeader();
   app.querySelectorAll("button.card").forEach(b => b.onclick = () => tapCard(b.dataset.zone, b.dataset.card));
   const pb = document.getElementById("playBtn"); if (pb) pb.onclick = play;
   const cb = document.getElementById("clearBtn"); if (cb) cb.onclick = () => { sel={hand:null,table:new Set()}; errMsg=""; render(); };
-  const mb = document.getElementById("mineBtn"); mb.onclick = () => { const m=document.getElementById("mine"); m.hidden=!m.hidden; mb.textContent = m.hidden ? "See cards you've taken" : "Hide cards you've taken"; };
 }
 
 function tapCard(zone, c){
