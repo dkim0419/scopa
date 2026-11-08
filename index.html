@@ -67,7 +67,7 @@ h1,h2,h3{font-family:var(--display);font-weight:700;margin:0;text-wrap:balance;l
 .stats{display:flex;gap:12px;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
 .stats b{color:var(--ink)}
 .backs{display:flex}
-.backs .back{margin-left:-12px}
+.backs .back{margin-left:-12px;--w:30px}
 .backs .back:first-child{margin-left:0}
 
 .lastmove{border-left:3px solid var(--accent);padding:6px 10px;background:rgba(0,0,0,.18);border-radius:0 8px 8px 0;font-size:15px;min-height:38px}
@@ -75,7 +75,33 @@ h1,h2,h3{font-family:var(--display);font-weight:700;margin:0;text-wrap:balance;l
 
 .tablezone{border:1px solid var(--felt-line);border-radius:18px;padding:14px 10px;min-height:calc(var(--tw) * 1.55 + 28px);display:flex;flex-wrap:wrap;gap:14px 8px;justify-content:center;align-content:center;background:rgba(0,0,0,.10);position:relative}
 .tablezone .empty{color:var(--muted);font-style:italic;align-self:center}
-.deckinfo{position:absolute;right:10px;bottom:-11px;background:var(--felt-deep);padding:0 8px;font-size:13px;color:var(--muted);border-radius:6px}
+/* deck + piles */
+.deckbar{display:flex;align-items:center;gap:14px;padding:10px 12px;border:1px solid var(--felt-line);border-radius:14px;background:rgba(0,0,0,.16)}
+.deck{position:relative;width:46px;aspect-ratio:250/388;flex:none}
+.deck .back{position:absolute;inset:0;width:100%;--w:46px;transform:translate(calc(var(--i) * -1.5px), calc(var(--i) * -1.5px))}
+.deck.empty{border:2px dashed var(--felt-line);border-radius:4px}
+.deck .cnt{position:absolute;right:-8px;bottom:-8px;z-index:5;min-width:26px;height:26px;padding:0 6px;border-radius:13px;background:var(--accent);color:#2a1f08;font-weight:800;font-size:15px;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums;box-shadow:0 2px 6px rgba(0,0,0,.4)}
+.deckcopy{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1}
+.deckcopy .big{font-family:var(--display);font-size:20px;line-height:1.1}
+.hands{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.hands i{width:16px;height:6px;border-radius:3px;background:rgba(255,255,255,.14);display:block}
+.hands i.done{background:var(--muted)}
+.hands i.now{background:var(--accent);box-shadow:0 0 0 2px rgba(240,197,82,.25)}
+.hands small{color:var(--muted);font-size:13px;margin-left:4px}
+.pile{position:relative;width:30px;aspect-ratio:250/388;flex:none}
+.pile .back{position:absolute;inset:0;--w:30px;width:100%;transform:rotate(var(--r))}
+.pile.none{border:1px dashed var(--felt-line);border-radius:3px}
+.seat .side{display:flex;align-items:center;gap:14px}
+
+/* motion */
+.ghost{position:fixed;z-index:30;pointer-events:none;will-change:transform}
+.ghost .card{width:100%}
+.ghost .card.glow,.card.glow{box-shadow:0 0 0 3px var(--accent),0 0 22px rgba(240,197,82,.6)}
+.burst{position:fixed;z-index:35;pointer-events:none;font-family:var(--display);font-weight:800;color:var(--accent);font-size:clamp(48px,16vw,96px);text-shadow:0 4px 24px rgba(0,0,0,.6),0 0 30px rgba(240,197,82,.5);transform:translate(-50%,-50%);white-space:nowrap}
+.status.mine{animation:pulse 2.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.6}}
+.card.hand-card:not(:disabled):hover{transform:translateY(-4px)}
+.card.hand-card.sel:not(:disabled):hover{transform:translateY(-10px)}
 
 .status{text-align:center;font-family:var(--display);font-size:20px}
 .status.mine{color:var(--accent)}
@@ -119,7 +145,7 @@ summary{cursor:pointer;font-weight:700}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:#2a1d14;color:var(--ink);border:1px solid #5a3b2a;padding:10px 14px;border-radius:10px;z-index:40;max-width:min(92vw,520px);font-size:15px}
 .rules{font-size:15px}
 .rules li{margin-bottom:6px}
-@media (prefers-reduced-motion: reduce){.card{transition:none}}
+@media (prefers-reduced-motion: reduce){.card{transition:none}.status.mine{animation:none}}
 </style>
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
 </head>
@@ -319,7 +345,7 @@ function subsetSum(arr, target){
 let db=null, myId=null, canWrite=true;
 let roomCode=null, S=null, unsub=null, loadTimer=null, busy=false, loadNote="";
 let sel = { hand:null, table:new Set() };
-let errMsg = "", lastSeenSeq = -1, reviewTab = "points";
+let errMsg = "", lastSeenSeq = -1, reviewTab = "points", holdReviewUntil = 0;
 const app = document.getElementById("app");
 
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true, 4200); }
@@ -460,9 +486,13 @@ function openRoom(code){
     if (!snap.metadata.fromCache){ clearTimeout(loadTimer); loadNote=""; }
     if (!snap.exists){ if (!snap.metadata.fromCache){ leaveRoom(`Room ${code} doesn't exist any more.`); } return; }
     const next = snap.data();
+    const prev = S, before = prev && prev.phase !== "review" ? snapRects() : null;
     if (S && next.seq !== S.seq){ sel = { hand:null, table:new Set() }; errMsg=""; }
+    // Let the last card of a round land before the results sheet covers the table.
+    if (prev && prev.phase === "playing" && next.phase === "review" && motionOK()){ holdReviewUntil = Date.now() + 2200; setTimeout(render, 2250); }
     S = next;
     render();
+    if (prev && (next.seq !== prev.seq)) animateTransition(prev, next, before);
     maybeAdvance();
   }, e => { clearTimeout(loadTimer); loadNote = "Lost the connection to this table. Reload the page to reconnect."; render(); });
 }
@@ -484,6 +514,7 @@ function render(){
   if (S.phase==="waiting") return renderWaiting(me);
   if (me < 0) return renderSpectator();
   renderGame(me);
+  if (S.phase==="review" && Date.now() < holdReviewUntil) return;
   if (S.phase==="review") renderReview(me);
 }
 
@@ -548,6 +579,138 @@ function moveText(m, me){
   return t;
 }
 
+// 40 cards: 4 on the table, then 6 hands of 3 cards each per player.
+const HANDS_PER_ROUND = 6;
+function deckHTML(){
+  const n = S.deck.length;
+  const hand = Math.min(HANDS_PER_ROUND, HANDS_PER_ROUND - Math.ceil(n / 6) );
+  const layers = Math.min(6, Math.ceil(n / 6));
+  const meter = Array.from({length:HANDS_PER_ROUND}, (_,i) => `<i class="${i<hand-1?"done":i===hand-1?"now":""}"></i>`).join("");
+  const deals = n / 6;
+  const line = n === 0
+    ? "Deck empty: this is the last hand."
+    : `${deals} more deal${deals===1?"":"s"} of 3 cards each`;
+  return `<div class="deckbar" aria-label="${n} cards left in the deck">
+    <div class="deck ${n?"":"empty"}" id="deck">${Array.from({length:layers},(_,i)=>`<div class="back" style="--i:${i}"></div>`).join("")}${n?`<span class="cnt">${n}</span>`:""}</div>
+    <div class="deckcopy"><span class="big">${n ? `${n} card${n===1?"":"s"} left in the deck` : "No cards left in the deck"}</span>
+      <span class="muted">${line}</span>
+      <div class="hands" title="Hands this round">${meter}<small>hand ${hand} of ${HANDS_PER_ROUND} · round ${S.round}</small></div></div>
+  </div>`;
+}
+function pileHTML(id, n){
+  if (!n) return `<div class="pile none" id="${id}" aria-hidden="true"></div>`;
+  const layers = Math.min(4, Math.ceil(n / 6));
+  return `<div class="pile" id="${id}" aria-hidden="true">${Array.from({length:layers},(_,i)=>`<div class="back" style="--r:${[-6,4,-2,7][i]}deg"></div>`).join("")}</div>`;
+}
+
+// ---------- animation ----------
+const motionOK = () => !matchMedia("(prefers-reduced-motion: reduce)").matches;
+const EASE = "cubic-bezier(.2,.75,.25,1)";
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function snapRects(){
+  const m = { cards:{} };
+  app.querySelectorAll("button.card[data-card]").forEach(el => { m.cards[el.dataset.card] = el.getBoundingClientRect(); });
+  for (const id of ["deck","oppHand","pile-me","pile-op","table","hand"]){ const el = document.getElementById(id); m[id] = el ? el.getBoundingClientRect() : null; }
+  return m;
+}
+// A card-sized box centred on a region, for cards that come from somewhere without a card of their own.
+function boxIn(r, w){ if (!r) return null; const h = w * 388/250; return { left: r.left + r.width/2 - w/2, top: r.top + r.height/2 - h/2, width: w, height: h }; }
+function tableCardWidth(){ const el = app.querySelector("#table .card") || app.querySelector("#hand .card"); return el ? el.getBoundingClientRect().width * (el.classList.contains("hand-card") ? .75 : 1) : 70; }
+// Animate an element from where it was (a rect) to where it is now.
+function flyFrom(el, from, { duration=480, delay=0, rotate=0, fromOpacity=1 } = {}){
+  if (!from || !el.isConnected) return Promise.resolve();
+  const to = el.getBoundingClientRect(); if (!to.width) return Promise.resolve();
+  const dx = (from.left + from.width/2) - (to.left + to.width/2), dy = (from.top + from.height/2) - (to.top + to.height/2), sc = from.width / to.width;
+  if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(sc-1) < .01) return Promise.resolve();
+  return el.animate([{ transform:`translate(${dx}px,${dy}px) scale(${sc}) rotate(${rotate}deg)`, opacity: fromOpacity }, { transform:"none", opacity:1 }],
+    { duration, delay, easing: EASE, fill: "backwards" }).finished.catch(()=>{});
+}
+function ghost(c, rect){
+  const g = document.createElement("div"); g.className = "ghost";
+  g.style.cssText = `left:${rect.left}px;top:${rect.top}px;width:${rect.width}px`;
+  g.innerHTML = cardHTML(c).replace('class="card', `style="--w:${rect.width}px" class="card`);
+  document.body.appendChild(g); return g;
+}
+function moveGhost(g, from, to, { duration=480, delay=0, endOpacity=1, rotate=0 } = {}){
+  const dx = (to.left + to.width/2) - (from.left + from.width/2), dy = (to.top + to.height/2) - (from.top + from.height/2), sc = to.width / from.width;
+  return g.animate([{ transform:"none", opacity:1 }, { transform:`translate(${dx}px,${dy}px) scale(${sc}) rotate(${rotate}deg)`, opacity:endOpacity }],
+    { duration, delay, easing: EASE, fill:"forwards" }).finished.catch(()=>{});
+}
+function burst(text, r){
+  const b = document.createElement("div"); b.className = "burst"; b.textContent = text;
+  const x = r ? r.left + r.width/2 : innerWidth/2, y = r ? r.top + r.height/2 : innerHeight/2;
+  b.style.left = x + "px"; b.style.top = y + "px"; document.body.appendChild(b);
+  b.animate([{ transform:"translate(-50%,-50%) scale(.3) rotate(-8deg)", opacity:0 }, { transform:"translate(-50%,-50%) scale(1.12) rotate(-3deg)", opacity:1, offset:.35 },
+    { transform:"translate(-50%,-50%) scale(1) rotate(-3deg)", opacity:1, offset:.75 }, { transform:"translate(-50%,-62%) scale(1)", opacity:0 }],
+    { duration:1400, easing:"ease-out" }).finished.then(() => b.remove(), () => b.remove());
+}
+
+let animating = 0;
+async function animateTransition(prev, next, before){
+  if (!motionOK() || !before) return;
+  const me = mySeat(); if (me < 0) return;
+  animating++;
+  try {
+    const after = snapRects();
+    const cw = tableCardWidth();
+    const newRound = prev.round !== next.round || prev.phase === "waiting";
+    // Cards that only moved (table reflow) slide to their new place.
+    if (!newRound) for (const [c, r] of Object.entries(before.cards)){
+      const el = app.querySelector(`button.card[data-card="${c}"]`);
+      if (el && !(next.lastMove && c === next.lastMove.card)) flyFrom(el, r, { duration:380 });
+    }
+    let dealDelay = 0;
+    const m = next.lastMove;
+    if (!newRound && m && next.seq !== prev.seq){
+      const mine = m.p === me;
+      const src = mine ? (before.cards[m.card] || boxIn(before.hand, cw)) : boxIn(before.oppHand, cw * .6);
+      if (!m.takes.length){
+        const el = app.querySelector(`#table button.card[data-card="${m.card}"]`);
+        if (el) await flyFrom(el, src, { duration:520, rotate: mine ? 0 : -10, fromOpacity: mine ? 1 : .4 });
+      } else {
+        // 1. the played card flies onto the first card it takes
+        const target = before.cards[m.takes[0]];
+        const gp = ghost(m.card, src);
+        const takeGhosts = m.takes.map(c => before.cards[c] ? { g: ghost(c, before.cards[c]), r: before.cards[c] } : null).filter(Boolean);
+        const landing = target ? { left: target.left + target.width*.18, top: target.top - target.height*.08, width: target.width, height: target.height } : src;
+        await moveGhost(gp, src, landing, { duration:460, rotate: mine ? 4 : -6 });
+        // 2. a beat so you can see what was taken
+        gp.querySelector(".card").classList.add("glow");
+        takeGhosts.forEach(t => t.g.querySelector(".card").classList.add("glow"));
+        if (m.scopa) burst("Scopa!", after.table);
+        await sleep(m.scopa ? 650 : 420);
+        // 3. everything sweeps into the taker's pile
+        const pile = (m.p === me ? after["pile-me"] : after["pile-op"]) || boxIn(m.p === me ? after.hand : after.oppHand, 30);
+        const all = [{ g: gp, r: landing }, ...takeGhosts];
+        await Promise.all(all.map((t, i) => moveGhost(t.g, t.r, pile, { duration:520, delay: i*60, endOpacity:.2, rotate: (i%2?8:-8) })));
+        all.forEach(t => t.g.remove());
+      }
+      dealDelay = 120;
+      if (m.leftover && before.table){
+        const pile = m.leftover.p === me ? after["pile-me"] : after["pile-op"];
+        const gs = m.leftover.cards.map(c => before.cards[c] ? { g: ghost(c, before.cards[c]), r: before.cards[c] } : null).filter(Boolean);
+        await Promise.all(gs.map((t,i) => moveGhost(t.g, t.r, pile, { duration:560, delay: 200 + i*70, endOpacity:.2 })));
+        gs.forEach(t => t.g.remove());
+      }
+    }
+    // Deals: new cards come off the deck, one at a time.
+    const deckR = after.deck || before.deck;
+    if (deckR){
+      const from = boxIn(deckR, 46);
+      let i = 0;
+      if (newRound) for (const el of app.querySelectorAll("#table button.card")) flyFrom(el, from, { duration:460, delay: dealDelay + (i++)*110, rotate:-6 });
+      const prevHand = newRound ? [] : (prev.hands[me] || []);
+      const opBefore = newRound ? 0 : (prev.hands[1-me] || []).length;
+      const myNew = [...app.querySelectorAll("#hand button.card")].filter(el => !prevHand.includes(el.dataset.card));
+      const opBacks = [...app.querySelectorAll("#oppHand .back")].slice(opBefore);
+      if (myNew.length > 1 || opBacks.length > 1){
+        const order = []; for (let k=0; k<3; k++){ if (opBacks[k]) order.push(opBacks[k]); if (myNew[k]) order.push(myNew[k]); }
+        order.forEach(el => flyFrom(el, from, { duration:440, delay: dealDelay + (i++)*110, rotate: el.classList.contains("back") ? 10 : -10 }));
+      }
+    }
+  } finally { animating--; }
+}
+
 function renderGame(me){
   const op = other(me), myTurn = S.phase==="playing" && S.turn===me;
   const lm = S.lastMove;
@@ -559,12 +722,14 @@ function renderGame(me){
   const takeCount = sel.table.size;
   app.innerHTML = `${headerHTML(me)}
   <div class="seat">
+    <div class="side">${pileHTML("pile-op", S.captured[op].length)}
     <div class="who"><strong>${esc(nameOf(op))}</strong>
-      <div class="stats"><span><b>${S.captured[op].length}</b> taken</span><span><b>${S.scope[op]}</b> scop${S.scope[op]===1?"a":"e"}</span></div></div>
-    <div class="backs" aria-label="${S.hands[op].length} cards in hand">${S.hands[op].map(()=>`<div class="back"></div>`).join("")}</div>
+      <div class="stats"><span><b>${S.captured[op].length}</b> taken</span><span><b>${S.scope[op]}</b> scop${S.scope[op]===1?"a":"e"}</span></div></div></div>
+    <div class="backs" id="oppHand" aria-label="${S.hands[op].length} cards in hand">${S.hands[op].map(()=>`<div class="back"></div>`).join("")}</div>
   </div>
   <div class="lastmove" aria-live="polite">${moveText(lm, me)}</div>
-  <div class="tablezone" id="table">${tableHTML}<span class="deckinfo">${S.deck.length} in deck · round ${S.round}</span></div>
+  ${deckHTML()}
+  <div class="tablezone" id="table">${tableHTML}</div>
   <div class="status ${myTurn?"mine":""}">${S.phase!=="playing" ? "Round over" : myTurn ? "Your turn" : `Waiting for ${esc(nameOf(op))}…`}</div>
   <div class="hand" id="hand">${hand.map(c => cardHTML(c, { button:true, zone:"hand", disabled:!myTurn, cls:"hand-card " + (sel.hand===c?"sel":"") })).join("")}</div>
   <div class="err" role="alert">${esc(errMsg)}</div>
@@ -574,8 +739,9 @@ function renderGame(me){
       <button class="btn" id="clearBtn" ${sel.hand||takeCount?"":"disabled"}>Clear</button>` : ""}
   </div>
   <div class="seat">
+    <div class="side">${pileHTML("pile-me", S.captured[me].length)}
     <div class="who"><strong>${esc(nameOf(me))} <span class="muted" style="font-family:var(--body);font-size:14px">(you)</span></strong>
-      <div class="stats"><span><b>${S.captured[me].length}</b> taken</span><span><b>${S.scope[me]}</b> scop${S.scope[me]===1?"a":"e"}</span></div></div>
+      <div class="stats"><span><b>${S.captured[me].length}</b> taken</span><span><b>${S.scope[me]}</b> scop${S.scope[me]===1?"a":"e"}</span></div></div></div>
     <button class="linkish" id="mineBtn">See cards you've taken</button>
   </div>
   <div id="mine" hidden>${S.captured[me].length ? minis(S.captured[me]) : `<span class="muted">Nothing yet.</span>`}</div>`;
