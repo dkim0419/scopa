@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // One document per room, named by its 4-letter code.
+    match /rooms/{code} {
+      allow read: if request.auth != null;
+
+      // Creating a room: you are its only player.
+      allow create: if request.auth != null
+        && code.matches('^[A-Z]{4}$')
+        && request.resource.data.uids == [request.auth.uid]
+        && validRoom();
+
+      // Players update their own room; a second person may join a room with one player.
+      allow update: if request.auth != null && validRoom() && (
+        (request.auth.uid in resource.data.uids
+          && request.resource.data.uids == resource.data.uids)
+        || (resource.data.uids.size() == 1
+          && request.resource.data.uids == resource.data.uids.concat([request.auth.uid]))
+      );
+
+      allow delete: if false;
+    }
+
+    function validRoom() {
+      return request.resource.data.s is string
+        && request.resource.data.s.size() < 200000
+        && request.resource.data.keys().hasOnly(['s', 'ready', 'uids', 'seq', 'updatedAt']);
+    }
+
+    // Everything else is closed.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="A private two-player Scopa napoletana table. Make a room, share the code, play at your own pace.">
+<link rel="icon" href="cards/denari-asso.webp">
+<title>Scopa a Due</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700;800&family=Alegreya+Sans:wght@400;500;700&display=swap">
+<style>
+/* Layout: one felt table, opponent on top, table cards in the middle, your hand anchored at the bottom. Single dark "bar table" look on purpose. */
+:root{
+  --felt:#163f3b; --felt-deep:#0e2c29; --felt-line:#2a5a54;
+  --ink:#f2e9d6; --muted:#a8c0b8;
+  --card:#fbf5e7; --card-edge:#d9cdb2; --card-ink:#2b2219;
+  --gold:#c9962c; --cup:#b3352d; --sword:#2f5c9c; --club:#4a7a32;
+  --accent:#f0c552; --danger:#ff8a7a;
+  --display:"Alegreya SC", "Palatino Linotype", Palatino, Georgia, serif;
+  --body:"Alegreya Sans", "Gill Sans", "Segoe UI", system-ui, sans-serif;
+  color-scheme:dark;
+}
+html,body{height:100%}
+body{background:radial-gradient(120% 80% at 50% 40%, var(--felt) 0%, var(--felt-deep) 100%) fixed, var(--felt-deep);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.4}
+*{box-sizing:border-box}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.wrap{max-width:760px;margin:0 auto;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));padding-block:12px 24px;display:flex;flex-direction:column;gap:14px;min-height:100%}
+h1,h2,h3{font-family:var(--display);font-weight:700;margin:0;text-wrap:balance;letter-spacing:.01em}
+.muted{color:var(--muted)}
+.label{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+
+/* buttons */
+.btn{border:1px solid var(--felt-line);background:rgba(255,255,255,.04);padding:10px 16px;border-radius:10px;font-weight:700}
+.btn:hover{background:rgba(255,255,255,.08)}
+.btn.primary{background:var(--accent);color:#2a1f08;border-color:var(--accent)}
+.btn.primary:hover{filter:brightness(1.06)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn.small{padding:6px 10px;font-size:14px;border-radius:8px}
+.linkish{background:none;border:0;color:var(--muted);text-decoration:underline;padding:4px}
+
+/* lobby */
+.hero{display:flex;flex-direction:column;gap:6px;padding-top:12px}
+.hero h1{font-size:clamp(34px,8vw,52px);line-height:1}
+.hero p{margin:0;max-width:52ch}
+.panel{border:1px solid var(--felt-line);border-radius:14px;padding:16px;background:rgba(0,0,0,.14);display:flex;flex-direction:column;gap:12px}
+.field{display:flex;flex-direction:column;gap:6px}
+.field input,.field select{background:rgba(0,0,0,.25);border:1px solid var(--felt-line);color:var(--ink);border-radius:10px;padding:10px 12px;font:inherit;font-size:17px}
+.code-input{font-family:var(--display)!important;letter-spacing:.3em;text-transform:uppercase;font-size:22px!important}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.row>*{min-width:0}
+.check{display:flex;gap:10px;align-items:flex-start}
+.check input{margin-top:4px;accent-color:var(--accent)}
+.fan{display:flex;gap:0;margin:4px 0 0 4px}
+.fan .card{margin-left:-18px;transform:rotate(var(--r));transform-origin:bottom center}
+.fan .card:first-child{margin-left:0}
+
+/* game header */
+.top{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.codebadge{font-family:var(--display);letter-spacing:.2em;font-size:18px;border:1px dashed var(--felt-line);padding:4px 10px;border-radius:8px;background:none}
+.score{display:flex;gap:14px;align-items:baseline;font-variant-numeric:tabular-nums}
+.score b{font-family:var(--display);font-size:24px}
+
+.seat{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+.seat .who{display:flex;flex-direction:column}
+.seat .who strong{font-family:var(--display);font-size:20px}
+.stats{display:flex;gap:12px;font-size:14px;color:var(--muted);font-variant-numeric:tabular-nums}
+.stats b{color:var(--ink)}
+.backs{display:flex}
+.backs .back{margin-left:-12px}
+.backs .back:first-child{margin-left:0}
+
+.lastmove{border-left:3px solid var(--accent);padding:6px 10px;background:rgba(0,0,0,.18);border-radius:0 8px 8px 0;font-size:15px;min-height:38px}
+.lastmove .scopa{font-family:var(--display);color:var(--accent);font-weight:800}
+
+.tablezone{border:1px solid var(--felt-line);border-radius:18px;padding:14px 10px;min-height:calc(var(--tw) * 1.55 + 28px);display:flex;flex-wrap:wrap;gap:14px 8px;justify-content:center;align-content:center;background:rgba(0,0,0,.10);position:relative}
+.tablezone .empty{color:var(--muted);font-style:italic;align-self:center}
+.deckinfo{position:absolute;right:10px;bottom:-11px;background:var(--felt-deep);padding:0 8px;font-size:13px;color:var(--muted);border-radius:6px}
+
+.status{text-align:center;font-family:var(--display);font-size:20px}
+.status.mine{color:var(--accent)}
+.err{color:var(--danger);text-align:center;font-size:15px;min-height:20px}
+.hand{display:flex;justify-content:center;gap:12px;flex-wrap:wrap}
+.actions{display:flex;justify-content:center;gap:10px;flex-wrap:wrap}
+
+/* cards */
+:root{--tw:clamp(58px, 17.5vw, 88px);--hw:clamp(84px, 26vw, 116px);--mw:46px}
+.card{--w:var(--tw);width:var(--w);aspect-ratio:250/388;max-width:100%;border-radius:calc(var(--w) * .055);background:transparent;border:0;box-shadow:0 2px 0 rgba(0,0,0,.25),0 6px 14px rgba(0,0,0,.28);position:relative;display:block;padding:0;flex:none;transition:transform .15s ease, box-shadow .15s ease;user-select:none;-webkit-user-select:none}
+.card img{display:block;width:100%;height:100%;border-radius:inherit;pointer-events:none}
+button.card{cursor:pointer}
+button.card:disabled{cursor:default;opacity:1}
+.card.hand-card{--w:var(--hw)}
+.card.mini{--w:var(--mw);box-shadow:0 1px 3px rgba(0,0,0,.3)}
+.card .num{position:absolute;top:3%;left:5%;min-width:1.45em;padding:0 .2em;font-family:var(--display);font-weight:800;font-size:calc(var(--w) * .17);line-height:1.2;text-align:center;border-radius:.35em;background:rgba(246,243,236,.94);color:#2b2219;box-shadow:0 0 0 1px rgba(138,107,47,.55)}
+.card.mini .num,body.no-nums .card .num{display:none}
+.card.sel{transform:translateY(-10px);box-shadow:0 0 0 3px var(--accent),0 12px 18px rgba(0,0,0,.35)}
+.card.just{box-shadow:0 0 0 2px rgba(240,197,82,.45),0 6px 14px rgba(0,0,0,.25)}
+.card.just::after{content:"just played";position:absolute;bottom:4%;left:50%;transform:translateX(-50%);font-size:10px;font-weight:700;background:var(--accent);color:#2a1f08;padding:1px 6px;border-radius:6px;white-space:nowrap;font-family:var(--body)}
+.back{--w:34px;width:var(--w);aspect-ratio:250/388;border-radius:2px;background:url("cards/dorso.webp") center/cover;box-shadow:0 2px 4px rgba(0,0,0,.35)}
+.minis{display:flex;flex-wrap:wrap;gap:4px}
+
+/* review */
+.overlay{position:fixed;inset:0;background:rgba(5,20,18,.82);backdrop-filter:blur(3px);overflow:auto;z-index:20;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.sheet{max-width:640px;margin:24px auto;padding-left:max(16px, env(safe-area-inset-left, 0px));padding-right:max(16px, env(safe-area-inset-right, 0px));display:flex;flex-direction:column;gap:16px}
+.sheet h2{font-size:30px}
+.tbl-wrap{overflow-x:auto}
+table.pts{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}
+table.pts th,table.pts td{padding:9px 8px;border-bottom:1px solid var(--felt-line);text-align:left;vertical-align:top}
+table.pts th{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:500}
+table.pts td.num{text-align:right;white-space:nowrap}
+table.pts .pt{display:inline-block;min-width:22px;text-align:center;border-radius:6px;font-weight:700;margin-left:6px}
+table.pts .pt.on{background:var(--accent);color:#2a1f08}
+table.pts .pt.off{color:var(--muted)}
+table.pts tr.total td{font-family:var(--display);font-size:20px;border-bottom:0}
+.detail{font-size:13px;color:var(--muted)}
+details{border:1px solid var(--felt-line);border-radius:12px;padding:10px 12px}
+summary{cursor:pointer;font-weight:700}
+.winner{font-family:var(--display);font-size:26px;color:var(--accent)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:#2a1d14;color:var(--ink);border:1px solid #5a3b2a;padding:10px 14px;border-radius:10px;z-index:40;max-width:min(92vw,520px);font-size:15px}
+.rules{font-size:15px}
+.rules li{margin-bottom:6px}
+@media (prefers-reduced-motion: reduce){.card{transition:none}}
+</style>
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+
+<div class="wrap" id="app">
+  <div class="hero">
+    <span class="label">Scopa napoletana · for two</span>
+    <h1>Scopa a Due</h1>
+    <p class="muted">Connecting to the card table…</p>
+  </div>
+</div>
+<div id="toast" class="toast" hidden></div>
+
+<script type="module">
+import { initializeApp, getAuth, signInAnonymously, getFirestore, doc, getDoc, setDoc, updateDoc, onSnapshot, runTransaction, serverTimestamp } from "./firebase.js";
+
+// ---------- Firebase (public web config: safe to ship) ----------
+const firebaseConfig = {
+  apiKey: "AIzaSyDOPvL3_X0uErgGPEIO3MhGGjH4myD4Mbc",
+  authDomain: "scopa-41d37.firebaseapp.com",
+  projectId: "scopa-41d37",
+  storageBucket: "scopa-41d37.firebasestorage.app",
+  messagingSenderId: "729124344537",
+  appId: "1:729124344537:web:bf3851938ecc4b39c064c8"
+};
+
+// Game state is one JSON string per room (Firestore can't store nested arrays).
+// "ready" stays a real map so both players can tick it at once, and "uids" lets the security rules check who may write.
+async function connect(){
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  await auth.authStateReady();
+  if (!auth.currentUser) await signInAnonymously(auth);
+  const fdb = getFirestore(app);
+  const encode = d => { const { ready, ...rest } = d;
+    return { s: JSON.stringify(rest), ready: ready || { p0:false, p1:false }, uids: (d.players||[]).filter(Boolean).map(p => p.id), seq: d.seq || 0, updatedAt: serverTimestamp() }; };
+  const decode = raw => Object.assign(JSON.parse(raw.s), { ready: raw.ready || { p0:false, p1:false } });
+  const wrap = s => ({ exists: s.exists(), data: () => s.exists() ? decode(s.data()) : undefined,
+    metadata: { fromCache: s.metadata.fromCache, hasPendingWrites: s.metadata.hasPendingWrites } });
+  const ref = path => { const r = doc(fdb, path); return {
+    get: async () => wrap(await getDoc(r)),
+    set: d => setDoc(r, encode(d)),
+    setReady: seat => updateDoc(r, { ["ready.p" + seat]: true }),
+    onSnapshot: (next, err) => onSnapshot(r, s => next(wrap(s)), err),
+    // Runs fn on the latest state inside a transaction; fn returns the new state, or null to change nothing.
+    transact: fn => runTransaction(fdb, async tx => { const s = await tx.get(r); const out = fn(s.exists() ? decode(s.data()) : null); if (out) tx.set(r, encode(out)); return out; })
+  }; };
+  return { db: { doc: ref }, uid: auth.currentUser.uid };
+}
+
+(() => {
+"use strict";
+// ---------- cards ----------
+const SUITS = { D:{en:"Coins",it:"Denari"}, C:{en:"Cups",it:"Coppe"}, S:{en:"Swords",it:"Spade"}, B:{en:"Clubs",it:"Bastoni"} };
+const FACE_IT = {1:"Asso",8:"Fante",9:"Cavallo",10:"Re"};
+const FACE_EN = {1:"Ace",8:"Jack",9:"Knight",10:"King"};
+const PRIM = {7:21,6:18,1:16,5:15,4:14,3:13,2:12,8:10,9:10,10:10};
+const val = c => +c.slice(1);
+const suit = c => c[0];
+const cardName = c => (FACE_EN[val(c)] || val(c)) + " of " + SUITS[suit(c)].en;
+const fullDeck = () => { const d=[]; for (const s of "DCSB") for (let v=1; v<=10; v++) d.push(s+v); return d; };
+function shuffle(a){ a=a.slice(); const r=new Uint32Array(a.length); crypto.getRandomValues(r);
+  for (let i=a.length-1;i>0;i--){ const j=r[i]%(i+1); [a[i],a[j]]=[a[j],a[i]]; } return a; }
+
+const SUIT_FILE = { D:"denari", C:"coppe", S:"spade", B:"bastoni" };
+const cardSrc = c => `cards/${SUIT_FILE[suit(c)]}-${({1:"asso",8:"fante",9:"cavallo",10:"re"})[val(c)] || "0"+val(c)}.webp`;
+function cardHTML(c, opts={}){
+  const v=val(c), s=suit(c);
+  const cls = ["card", s, opts.cls||""].join(" ");
+  const inner = `<img src="${cardSrc(c)}" alt="" draggable="false"><span class="num" aria-hidden="true">${v}</span>`;
+  const label = cardName(c) + (v>=8 ? ` (${v})` : "");
+  if (opts.button) return `<button type="button" class="${cls}" data-card="${c}" data-zone="${opts.zone}" aria-label="${label}" aria-pressed="${opts.cls&&opts.cls.includes("sel")?"true":"false"}" ${opts.disabled?"disabled":""}>${inner}</button>`;
+  return `<div class="${cls}" title="${label}" aria-label="${label}" role="img">${inner}</div>`;
+}
+const minis = list => `<div class="minis">${list.map(c=>cardHTML(c,{cls:"mini"})).join("")}</div>`;
+const esc = s => String(s??"").replace(/[&<>"']/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[ch]));
+
+// ---------- local prefs ----------
+const store = {
+  get(k){ try { return localStorage.getItem("scopa."+k); } catch { return null; } },
+  set(k,v){ try { v==null ? localStorage.removeItem("scopa."+k) : localStorage.setItem("scopa."+k, v); } catch {} }
+};
+
+// ---------- game rules ----------
+function startRound(s){
+  let deck, table;
+  do { deck = shuffle(fullDeck()); table = deck.splice(0,4); }
+  while (table.filter(c => val(c)===10).length >= 3); // three or four Kings on the table: redeal
+  const nd = 1 - s.dealer;
+  const hands = [[],[]];
+  hands[nd] = deck.splice(0,3); hands[s.dealer] = deck.splice(0,3);
+  Object.assign(s, { hands, table, deck, captured:[[],[]], scope:[0,0], lastCapturer:null,
+    turn: nd, phase:"playing", lastMove:null, ready:{p0:false,p1:false}, result:null, round:(s.round||0)+1, log:[] });
+  return s;
+}
+
+function scoreRound(s){
+  const per = [0,1].map(i => {
+    const c = s.captured[i];
+    const has = x => c.includes(x);
+    const best = {};
+    for (const x of c){ best[suit(x)] = Math.max(best[suit(x)]||0, PRIM[val(x)]); }
+    const prim = Object.keys(best).length===4 ? Object.values(best).reduce((a,b)=>a+b,0) : null;
+    let napola = 0;
+    if (s.napola && has("D1") && has("D2") && has("D3")){ napola = 3; let k=4; while (k<=10 && has("D"+k)){ napola++; k++; } }
+    return { cards:c.length, coins:c.filter(x=>suit(x)==="D").length, sette:has("D7"), prim, best, napola, scope:s.scope[i] };
+  });
+  const more = (a,b) => a>b ? [1,0] : b>a ? [0,1] : [0,0];
+  let primPts;
+  if (per[0].prim==null && per[1].prim==null) primPts=[0,0];
+  else if (per[0].prim==null) primPts=[0,1];
+  else if (per[1].prim==null) primPts=[1,0];
+  else primPts = more(per[0].prim, per[1].prim);
+  const rows = [
+    { key:"cards", label:"Cards", sub:"most cards taken", v:[per[0].cards, per[1].cards], pts: more(per[0].cards, per[1].cards) },
+    { key:"coins", label:"Coins", sub:"most Denari", v:[per[0].coins, per[1].coins], pts: more(per[0].coins, per[1].coins) },
+    { key:"sette", label:"Settebello", sub:"7 of Coins", v:[per[0].sette?"✓":"–", per[1].sette?"✓":"–"], pts:[per[0].sette?1:0, per[1].sette?1:0] },
+    { key:"prim", label:"Primiera", sub:"best card in each suit", v:[per[0].prim??"no suit set", per[1].prim??"no suit set"], pts: primPts },
+  ];
+  if (s.napola) rows.push({ key:"napola", label:"Napola", sub:"A-2-3 of Coins, +1 per next in a row", v:[per[0].napola||"–", per[1].napola||"–"], pts:[per[0].napola, per[1].napola] });
+  rows.push({ key:"scope", label:"Scope", sub:"table swept", v:[per[0].scope, per[1].scope], pts:[per[0].scope, per[1].scope] });
+  const total = [0,1].map(i => rows.reduce((a,r)=>a+r.pts[i],0));
+  return { rows, total, best:[per[0].best, per[1].best] };
+}
+
+function applyMove(prev, me, card, takes){
+  const s = structuredClone(prev);
+  s.hands[me] = s.hands[me].filter(c => c!==card);
+  const move = { p:me, card, takes, scopa:false, dealt:false };
+  if (takes.length){
+    s.table = s.table.filter(c => !takes.includes(c));
+    s.captured[me].push(card, ...takes);
+    s.lastCapturer = me;
+    const lastPlay = s.deck.length===0 && s.hands[0].length===0 && s.hands[1].length===0;
+    if (s.table.length===0 && !lastPlay){ s.scope[me]++; move.scopa = true; }
+  } else {
+    s.table.push(card);
+  }
+  s.turn = 1 - me;
+  if (s.hands[0].length===0 && s.hands[1].length===0){
+    if (s.deck.length){
+      const nd = 1 - s.dealer;
+      s.hands[nd] = s.deck.splice(0,3); s.hands[s.dealer] = s.deck.splice(0,3);
+      move.dealt = true;
+    } else {
+      endRound(s, move);
+    }
+  }
+  s.lastMove = move;
+  s.log = [...(s.log||[]), move].slice(-40);
+  s.seq = (s.seq||0) + 1;
+  return s;
+}
+
+function endRound(s, move){
+  if (s.table.length && s.lastCapturer!=null){
+    move.leftover = { p:s.lastCapturer, cards:s.table.slice() };
+    s.captured[s.lastCapturer].push(...s.table);
+    s.table = [];
+  }
+  const result = scoreRound(s);
+  s.scores = [s.scores[0]+result.total[0], s.scores[1]+result.total[1]];
+  const [a,b] = s.scores, hi = Math.max(a,b);
+  result.gameOver = hi >= s.target && a !== b;
+  result.winner = result.gameOver ? (a>b?0:1) : null;
+  s.result = result;
+  s.phase = "review";
+  s.ready = {p0:false, p1:false};
+}
+
+// Checks the player's chosen capture. Messages only describe what they picked; they never point at other cards.
+function checkCapture(s, card, takes){
+  const v = val(card);
+  if (!takes.length){
+    if (s.strict){
+      const tv = s.table.map(val);
+      if (tv.includes(v) || subsetSum(tv, v)) return "Strict rules are on: this card can take something, so it can't be laid down.";
+    }
+    return null;
+  }
+  const sum = takes.reduce((a,c)=>a+val(c),0);
+  if (takes.length===1){
+    return val(takes[0])===v ? null : `A ${val(takes[0])} doesn't match your ${v}.`;
+  }
+  if (sum !== v) return `Those cards add up to ${sum}, not ${v}.`;
+  if (s.table.some(c => val(c)===v)) return `A single ${v} is on the table, so you have to take that card instead of a combination.`;
+  return null;
+}
+function subsetSum(arr, target){
+  const n=arr.length;
+  for (let m=1; m<(1<<n); m++){ if ((m & (m-1))===0) continue; let t=0; for (let i=0;i<n;i++) if (m&(1<<i)) t+=arr[i]; if (t===target) return true; }
+  return false;
+}
+
+// ---------- runtime ----------
+let db=null, myId=null, canWrite=true;
+let roomCode=null, S=null, unsub=null, loadTimer=null, busy=false, loadNote="";
+let sel = { hand:null, table:new Set() };
+let errMsg = "", lastSeenSeq = -1, reviewTab = "points";
+const app = document.getElementById("app");
+
+function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true, 4200); }
+function writeFail(e){
+  console.error(e);
+  toast(e && e.code==="quota_exceeded" ? "The game store is full. Start a new room." :
+    "That didn't save. Check your connection and try again.");
+}
+const roomRef = code => db.doc("rooms/" + code);
+const mySeat = () => !S ? -1 : S.players.findIndex(p => p && p.id===myId);
+const other = i => 1 - i;
+const nameOf = i => (S.players[i] && S.players[i].name) || "Partner";
+
+async function boot(){
+  if (store.get("nums")==="off") document.body.classList.add("no-nums");
+  setTimeout(() => { for (const c of fullDeck()) { const i = new Image(); i.src = cardSrc(c); } }, 300);
+  try { const c = await connect(); db = c.db; myId = c.uid; } catch(e){ console.error(e); db = null; }
+  if (!db){ renderNoDb(); return; }
+  const fromHash = (location.hash||"").replace("#","").toUpperCase();
+  const saved = store.get("room");
+  if (saved) openRoom(saved);
+  else renderLobby(/^[A-Z]{4}$/.test(fromHash) ? fromHash : "");
+}
+
+function renderNoDb(){
+  app.innerHTML = `<div class="hero"><span class="label">Scopa napoletana · for two</span><h1>Scopa a Due</h1>
+  <p>Couldn't reach the card table server. Check your connection, then reload the page.</p><div><button class="btn primary" onclick="location.reload()">Reload</button></div></div>`;
+}
+
+// ---------- lobby ----------
+function renderLobby(prefill){
+  const name = store.get("name") || "";
+  const fanCards = ["D7","C1","S10","B9","D3"];
+  app.innerHTML = `
+  <div class="hero">
+    <span class="label">Scopa napoletana · for two</span>
+    <h1>Scopa a Due</h1>
+    <p class="muted">A private table for two. Make a room, send your partner the four-letter code, and play at your own pace. Nothing is highlighted and nothing times out.</p>
+    <div class="fan" aria-hidden="true">${fanCards.map((c,i)=>cardHTML(c,{cls:""}).replace('class="card','style="--r:'+((i-2)*7)+'deg" class="card')).join("")}</div>
+  </div>
+  ${canWrite===false ? `<p class="err" style="text-align:left">You can open this page but can't play on it yet. Ask the person who shared it to invite you as an Editor.</p>` : ""}
+  <div class="panel">
+    <div class="field"><label for="nm" class="label">Your name at the table</label>
+      <input id="nm" maxlength="18" autocomplete="nickname" placeholder="e.g. Dani" value="${esc(name)}"></div>
+  </div>
+  <div class="panel">
+    <h3>Join a room</h3>
+    <div class="row">
+      <input id="code" class="code-input field" style="flex:1;min-width:0;background:rgba(0,0,0,.25);border:1px solid var(--felt-line);color:var(--ink);border-radius:10px;padding:10px 12px" maxlength="4" placeholder="ABCD" value="${esc(prefill)}" autocapitalize="characters" aria-label="Room code">
+      <button class="btn primary" id="joinBtn">Join</button>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>Make a new room</h3>
+    <div class="field"><label for="target" class="label">Play to</label>
+      <select id="target"><option value="11">11 points</option><option value="16">16 points</option><option value="21">21 points</option></select></div>
+    <label class="check"><input type="checkbox" id="napola" checked><span><b>Napola</b><br><span class="muted">Ace, 2 and 3 of Coins score 3, plus 1 for each next Coin in a row.</span></span></label>
+    <label class="check"><input type="checkbox" id="strict"><span><b>Strict capture</b><br><span class="muted">Off: you may lay a card down even if it could take something (your partner can tease you). On: the game refuses it.</span></span></label>
+    <button class="btn primary" id="createBtn">Create room</button>
+  </div>
+  <details><summary>How to play</summary>${rulesHTML()}</details>`;
+  const nm = document.getElementById("nm");
+  nm.addEventListener("input", () => store.set("name", nm.value.trim()));
+  const codeEl = document.getElementById("code");
+  codeEl.addEventListener("input", () => { codeEl.value = codeEl.value.toUpperCase().replace(/[^A-Z]/g,""); });
+  document.getElementById("joinBtn").onclick = () => joinRoom(codeEl.value);
+  codeEl.addEventListener("keydown", e => { if (e.key==="Enter") joinRoom(codeEl.value); });
+  document.getElementById("createBtn").onclick = createRoom;
+}
+function myName(){ return (document.getElementById("nm")?.value.trim() || store.get("name") || "Player").slice(0,18); }
+
+function rulesHTML(){
+  return `<ul class="rules">
+  <li>40 Neapolitan cards: Coins, Cups, Swords, Clubs, 1 to 7 plus Fante (8), Cavallo (9) and Re (10).</li>
+  <li>Each player gets 3 cards, 4 go face up on the table. When both hands are empty, 3 more each until the deck runs out.</li>
+  <li>On your turn, play one card. Tap it, then tap the table cards you want to take, then tap <b>Take</b>. Take one card of the same value, or several cards that add up to it. If a single card of the same value is there, you must take that one.</li>
+  <li>If you take nothing, tap <b>Lay down</b>. Clearing the whole table is a <b>scopa</b> (1 point), except on the very last card of the round.</li>
+  <li>At the end of the round, cards left on the table go to whoever took last.</li>
+  <li>Points each round: most cards, most Coins, the Settebello (7 of Coins), Primiera (best card per suit: 7=21, 6=18, Ace=16, 5=15, 4=14, 3=13, 2=12, faces=10), Napola if on, and 1 per scopa.</li>
+  <li>First to the target wins. A tie at or above it plays another round.</li></ul>`;
+}
+
+function genCode(){ const A="ABCDEFGHJKLMNPQRSTUVWXYZ"; const r=crypto.getRandomValues(new Uint32Array(4)); return [...r].map(x=>A[x%A.length]).join(""); }
+
+async function createRoom(){
+  if (busy) return; busy=true;
+  try {
+    let code;
+    for (let i=0;i<5;i++){ code = genCode(); const snap = await roomRef(code).get(); if (!snap.exists) break; }
+    const s = {
+      code, createdAt: Date.now(), target: +document.getElementById("target").value,
+      napola: document.getElementById("napola").checked, strict: document.getElementById("strict").checked,
+      players: [{ id:myId, name:myName() }, null], phase:"waiting", scores:[0,0], round:0,
+      dealer: crypto.getRandomValues(new Uint8Array(1))[0] % 2, seq:0, ready:{p0:false,p1:false}
+    };
+    await roomRef(code).set(s);
+    openRoom(code);
+  } catch(e){ writeFail(e); }
+  finally { busy=false; }
+}
+
+async function joinRoom(raw){
+  const code = (raw||"").toUpperCase().trim();
+  if (!/^[A-Z]{4}$/.test(code)){ toast("Room codes are four letters."); return; }
+  if (busy) return; busy=true;
+  try {
+    const ref = roomRef(code);
+    let snap = await ref.get();
+    if (!snap.exists){ toast(`No room called ${code}. Check the code with your partner.`); return; }
+    let s = snap.data();
+    if (s.players.some(p => p && p.id===myId)){ openRoom(code); return; }
+    if (s.players[1]){ toast("That room already has two players."); return; }
+    let full = false;
+    await ref.transact(cur => {
+      if (!cur || cur.players.some(p => p && p.id===myId)) return null;
+      if (cur.players[1]){ full = true; return null; }
+      const s = structuredClone(cur);
+      s.players[1] = { id:myId, name:myName() };
+      startRound(s); s.seq = (s.seq||0)+1;
+      return s;
+    });
+    if (full){ toast("That room already has two players."); return; }
+    openRoom(code);
+  } catch(e){ writeFail(e); }
+  finally { busy=false; }
+}
+
+// ---------- room ----------
+function openRoom(code){
+  if (unsub) unsub();
+  roomCode = code; store.set("room", code); S = null; loadNote="";
+  try { history.replaceState(null, "", "#" + code); } catch { try { location.hash = code; } catch {} }
+  sel = { hand:null, table:new Set() }; errMsg="";
+  app.innerHTML = `<div class="hero"><span class="label">Room ${esc(code)}</span><h1>Scopa a Due</h1><p class="muted">Opening the table…</p></div>`;
+  clearTimeout(loadTimer);
+  loadTimer = setTimeout(() => { loadNote = "The table can't be reached yet. It will appear when the connection comes back."; render(); }, 10000);
+  unsub = roomRef(code).onSnapshot(snap => {
+    if (!snap.metadata.fromCache){ clearTimeout(loadTimer); loadNote=""; }
+    if (!snap.exists){ if (!snap.metadata.fromCache){ leaveRoom(`Room ${code} doesn't exist any more.`); } return; }
+    const next = snap.data();
+    if (S && next.seq !== S.seq){ sel = { hand:null, table:new Set() }; errMsg=""; }
+    S = next;
+    render();
+    maybeAdvance();
+  }, e => { clearTimeout(loadTimer); loadNote = "Lost the connection to this table. Reload the page to reconnect."; render(); });
+}
+
+function leaveRoom(msg){
+  if (unsub) unsub(); unsub=null; clearTimeout(loadTimer);
+  roomCode=null; S=null; store.set("room", null);
+  try { history.replaceState(null, "", location.pathname + location.search); } catch {}
+  renderLobby("");
+  if (msg) toast(msg);
+}
+
+function render(){
+  if (!S || S.phase!=="review") document.querySelectorAll(".overlay.review").forEach(x=>x.remove());
+  if (!roomCode) return;
+  if (!S){ app.innerHTML = `<div class="hero"><span class="label">Room ${esc(roomCode)}</span><h1>Scopa a Due</h1><p class="muted">${esc(loadNote || "Opening the table…")}</p><div><button class="btn small" id="leave">Back to lobby</button></div></div>`;
+    document.getElementById("leave").onclick = () => leaveRoom(); return; }
+  const me = mySeat();
+  if (S.phase==="waiting") return renderWaiting(me);
+  if (me < 0) return renderSpectator();
+  renderGame(me);
+  if (S.phase==="review") renderReview(me);
+}
+
+function headerHTML(me){
+  const a = me<0?0:me, b = other(a);
+  return `<div class="top">
+    <button class="codebadge" id="copyCode" title="Copy room code" aria-label="Copy room code ${esc(S.code)}">${esc(S.code)}</button>
+    <div class="score" aria-label="Score">
+      <span>${esc(me<0?nameOf(0):"You")} <b>${S.scores[a]}</b></span>
+      <span>${esc(nameOf(b))} <b>${S.scores[b]}</b></span>
+      <span class="muted">to ${S.target}</span>
+    </div>
+    <div class="row"><button class="btn small" id="rulesBtn">Rules</button><button class="btn small" id="leave">Leave</button></div>
+  </div>${loadNote?`<div class="err">${esc(loadNote)}</div>`:""}`;
+}
+function wireHeader(){
+  const cc = document.getElementById("copyCode");
+  if (cc) cc.onclick = async () => { try { await navigator.clipboard.writeText(S.code); toast("Room code copied."); } catch { toast("Room code: " + S.code); } };
+  const lv = document.getElementById("leave");
+  if (lv) lv.onclick = () => leaveRoom("You left the table. Join again any time with code " + S.code + ".");
+  const rb = document.getElementById("rulesBtn");
+  if (rb) rb.onclick = showRules;
+}
+function showRules(){
+  const o = document.createElement("div"); o.className="overlay"; o.setAttribute("role","dialog"); o.setAttribute("aria-label","Rules");
+  o.innerHTML = `<div class="sheet"><h2>How to play</h2>${rulesHTML()}<p class="muted">This room: to ${S.target} points · Napola ${S.napola?"on":"off"} · Strict capture ${S.strict?"on":"off"}</p>
+  <label class="check"><input type="checkbox" id="numsToggle" ${document.body.classList.contains("no-nums")?"":"checked"}><span><b>Number tags on cards</b><br><span class="muted">A small value in each card's corner. Real Napoletane cards don't have them; switch off to count the pips yourself. Only changes your screen.</span></span></label>
+  <p class="detail">Card art: a Neapolitan deck printed in Naples in 1902, traced by the woodcut-napoletane project (public domain, CC0).</p>
+  <div><button class="btn primary" id="closeRules">Back to the table</button></div></div>`;
+  document.body.appendChild(o);
+  o.querySelector("#closeRules").onclick = () => o.remove();
+  o.querySelector("#numsToggle").onchange = e => { const on = e.target.checked; document.body.classList.toggle("no-nums", !on); store.set("nums", on ? null : "off"); };
+  o.querySelector("#closeRules").focus();
+}
+
+function renderWaiting(me){
+  app.innerHTML = `${headerHTML(me)}
+  <div class="panel" style="align-items:center;text-align:center;gap:14px;padding-block:28px">
+    <span class="label">Waiting for your partner</span>
+    <div style="font-family:var(--display);font-size:56px;letter-spacing:.25em;line-height:1">${esc(S.code)}</div>
+    <p class="muted" style="margin:0;max-width:40ch">Send this code to your partner. They open this same page, type the code under <b>Join a room</b>, and the cards are dealt.</p>
+    <button class="btn primary" id="copy2">Copy code</button>
+  </div>`;
+  wireHeader();
+  document.getElementById("copy2").onclick = async () => { try { await navigator.clipboard.writeText(S.code); toast("Room code copied."); } catch { toast("Room code: " + S.code); } };
+}
+
+function renderSpectator(){
+  app.innerHTML = `${headerHTML(-1)}<div class="panel"><p style="margin:0">This room already has two players: ${esc(nameOf(0))} and ${esc(nameOf(1))}.</p><div><button class="btn" id="back">Back to lobby</button></div></div>`;
+  wireHeader(); document.getElementById("back").onclick = () => leaveRoom();
+}
+
+function moveText(m, me){
+  if (!m) return `<span class="muted">Round ${S.round}. ${S.turn===me ? "You" : esc(nameOf(S.turn))} lead${S.turn===me?"":"s"}.</span>`;
+  const who = m.p===me ? "You" : esc(nameOf(m.p));
+  let t = `${who} played <b>${cardName(m.card)}</b>`;
+  if (m.takes.length) t += ` and took ${m.takes.map(c=>"<b>"+cardName(c)+"</b>").join(" + ")}`;
+  else t += " to the table";
+  t += ".";
+  if (m.scopa) t += ` <span class="scopa">Scopa!</span>`;
+  if (m.dealt) t += ` <span class="muted">New cards dealt.</span>`;
+  return t;
+}
+
+function renderGame(me){
+  const op = other(me), myTurn = S.phase==="playing" && S.turn===me;
+  const lm = S.lastMove;
+  const justPlaced = lm && !lm.takes.length ? lm.card : null;
+  const hand = S.hands[me] || [];
+  const tableHTML = S.table.length
+    ? S.table.map(c => cardHTML(c, { button:true, zone:"table", disabled:!myTurn, cls:(sel.table.has(c)?"sel ":"") + (c===justPlaced?"just":"") })).join("")
+    : `<span class="empty">The table is empty.</span>`;
+  const takeCount = sel.table.size;
+  app.innerHTML = `${headerHTML(me)}
+  <div class="seat">
+    <div class="who"><strong>${esc(nameOf(op))}</strong>
+      <div class="stats"><span><b>${S.captured[op].length}</b> taken</span><span><b>${S.scope[op]}</b> scop${S.scope[op]===1?"a":"e"}</span></div></div>
+    <div class="backs" aria-label="${S.hands[op].length} cards in hand">${S.hands[op].map(()=>`<div class="back"></div>`).join("")}</div>
+  </div>
+  <div class="lastmove" aria-live="polite">${moveText(lm, me)}</div>
+  <div class="tablezone" id="table">${tableHTML}<span class="deckinfo">${S.deck.length} in deck · round ${S.round}</span></div>
+  <div class="status ${myTurn?"mine":""}">${S.phase!=="playing" ? "Round over" : myTurn ? "Your turn" : `Waiting for ${esc(nameOf(op))}…`}</div>
+  <div class="hand" id="hand">${hand.map(c => cardHTML(c, { button:true, zone:"hand", disabled:!myTurn, cls:"hand-card " + (sel.hand===c?"sel":"") })).join("")}</div>
+  <div class="err" role="alert">${esc(errMsg)}</div>
+  <div class="actions">
+    ${myTurn ? `
+      <button class="btn primary" id="playBtn" ${sel.hand?"":"disabled"}>${!sel.hand ? "Pick a card" : takeCount ? `Take ${takeCount} card${takeCount>1?"s":""}` : "Lay down"}</button>
+      <button class="btn" id="clearBtn" ${sel.hand||takeCount?"":"disabled"}>Clear</button>` : ""}
+  </div>
+  <div class="seat">
+    <div class="who"><strong>${esc(nameOf(me))} <span class="muted" style="font-family:var(--body);font-size:14px">(you)</span></strong>
+      <div class="stats"><span><b>${S.captured[me].length}</b> taken</span><span><b>${S.scope[me]}</b> scop${S.scope[me]===1?"a":"e"}</span></div></div>
+    <button class="linkish" id="mineBtn">See cards you've taken</button>
+  </div>
+  <div id="mine" hidden>${S.captured[me].length ? minis(S.captured[me]) : `<span class="muted">Nothing yet.</span>`}</div>`;
+  wireHeader();
+  app.querySelectorAll("button.card").forEach(b => b.onclick = () => tapCard(b.dataset.zone, b.dataset.card));
+  const pb = document.getElementById("playBtn"); if (pb) pb.onclick = play;
+  const cb = document.getElementById("clearBtn"); if (cb) cb.onclick = () => { sel={hand:null,table:new Set()}; errMsg=""; render(); };
+  const mb = document.getElementById("mineBtn"); mb.onclick = () => { const m=document.getElementById("mine"); m.hidden=!m.hidden; mb.textContent = m.hidden ? "See cards you've taken" : "Hide cards you've taken"; };
+}
+
+function tapCard(zone, c){
+  if (!S || S.phase!=="playing" || S.turn!==mySeat()) return;
+  errMsg = "";
+  if (zone==="hand") sel.hand = sel.hand===c ? null : c;
+  else sel.table.has(c) ? sel.table.delete(c) : sel.table.add(c);
+  render();
+}
+
+async function play(){
+  const me = mySeat();
+  if (busy || !S || S.phase!=="playing" || S.turn!==me || !sel.hand) return;
+  const takes = S.table.filter(c => sel.table.has(c));
+  const problem = checkCapture(S, sel.hand, takes);
+  if (problem){ errMsg = problem; render(); return; }
+  busy = true;
+  const next = applyMove(S, me, sel.hand, takes);
+  try { await roomRef(roomCode).set(next); }
+  catch(e){ writeFail(e); }
+  finally { busy = false; }
+}
+
+// ---------- round review ----------
+function renderReview(me){
+  const r = S.result, op = other(me);
+  const iReady = S.ready && S.ready["p"+me], theyReady = S.ready && S.ready["p"+op];
+  const ptCell = (row, i) => `<span>${esc(row.v[i])}</span><span class="pt ${row.pts[i]?"on":"off"}">${row.pts[i]?"+"+row.pts[i]:"0"}</span>`;
+  const lm = S.lastMove;
+  const leftover = lm && lm.leftover ? `<p class="detail" style="margin:0">${lm.leftover.p===me?"You":esc(nameOf(lm.leftover.p))} took last, so the ${lm.leftover.cards.length} card${lm.leftover.cards.length>1?"s":""} left on the table went to ${lm.leftover.p===me?"you":"them"}.</p>` : "";
+  const primDetail = i => { const b = r.best[i]; return Object.keys(SUITS).map(s => `${SUITS[s].it} ${b[s]??"–"}`).join(" · "); };
+  const o = document.createElement("div");
+  o.className = "overlay"; o.setAttribute("role","dialog"); o.setAttribute("aria-label","Round results");
+  o.innerHTML = `<div class="sheet">
+    <div><span class="label">Round ${S.round} results</span>
+    <h2>${r.gameOver ? (r.winner===me ? "You win the game!" : esc(nameOf(r.winner)) + " wins the game") : `You ${r.total[me]} · ${esc(nameOf(op))} ${r.total[op]}`}</h2></div>
+    ${r.gameOver ? `<div class="winner">Final score ${S.scores[me]} – ${S.scores[op]}</div>` : ""}
+    <div class="tbl-wrap"><table class="pts">
+      <thead><tr><th></th><th class="num">You</th><th class="num">${esc(nameOf(op))}</th></tr></thead>
+      <tbody>
+      ${r.rows.map(row => `<tr><td><b>${row.label}</b><div class="detail">${row.sub}</div>${row.key==="prim" ? `<div class="detail">You: ${primDetail(me)}<br>${esc(nameOf(op))}: ${primDetail(op)}</div>`:""}</td><td class="num">${ptCell(row, me)}</td><td class="num">${ptCell(row, op)}</td></tr>`).join("")}
+      <tr class="total"><td>This round</td><td class="num">${r.total[me]}</td><td class="num">${r.total[op]}</td></tr>
+      <tr class="total"><td>Game total</td><td class="num">${S.scores[me]}</td><td class="num">${S.scores[op]}</td></tr>
+      </tbody></table></div>
+    ${leftover}
+    <details><summary>Cards you took (${S.captured[me].length})</summary><div style="margin-top:10px">${minis(sortCards(S.captured[me]))}</div></details>
+    <details><summary>Cards ${esc(nameOf(op))} took (${S.captured[op].length})</summary><div style="margin-top:10px">${minis(sortCards(S.captured[op]))}</div></details>
+    <div class="row">
+      <button class="btn primary" id="readyBtn" ${iReady?"disabled":""}>${iReady ? (r.gameOver?"Waiting to start a new game…":"Waiting for " + esc(nameOf(op)) + "…") : (r.gameOver ? "Play again" : "Next round")}</button>
+      <span class="muted">${theyReady ? esc(nameOf(op)) + " is ready." : esc(nameOf(op)) + " is still reviewing."}</span>
+    </div>
+    <p class="detail" style="margin:0">Take your time. The next round starts only when you both tap ${r.gameOver?"Play again":"Next round"}.</p>
+  </div>`;
+  const prev = document.querySelector(".overlay.review");
+  if (prev){
+    const open = [...prev.querySelectorAll("details")].map(d=>d.open);
+    o.querySelectorAll("details").forEach((d,i)=>{ if (open[i]) d.open = true; });
+    const top = prev.scrollTop; prev.remove();
+    requestAnimationFrame(()=>{ o.scrollTop = top; });
+  }
+  o.classList.add("review");
+  document.body.appendChild(o);
+  o.querySelector("#readyBtn").onclick = markReady;
+}
+function sortCards(list){ const order="DCSB"; return list.slice().sort((a,b)=> order.indexOf(suit(a))-order.indexOf(suit(b)) || val(a)-val(b)); }
+
+async function markReady(){
+  const me = mySeat(); if (me<0 || busy) return;
+  busy = true;
+  try { await roomRef(roomCode).setReady(me); }
+  catch(e){ writeFail(e); }
+  finally { busy = false; }
+}
+
+let advancing = false;
+async function maybeAdvance(){
+  if (!S || S.phase!=="review" || !S.ready || !S.ready.p0 || !S.ready.p1 || advancing || mySeat()<0) return;
+  advancing = true;
+  try {
+    await roomRef(roomCode).transact(cur => {
+      if (!cur || cur.phase!=="review" || !cur.ready.p0 || !cur.ready.p1) return null;
+      const s = structuredClone(cur);
+      if (s.result && s.result.gameOver){ s.scores=[0,0]; s.round=0; }
+      s.dealer = 1 - s.dealer;
+      startRound(s); s.seq = (s.seq||0)+1;
+      return s;
+    });
+  } catch(e){ writeFail(e); }
+  finally { advancing = false; }
+}
+
+window.addEventListener("hashchange", () => {
+  const h = (location.hash||"").replace("#","").toUpperCase();
+  if (!roomCode && /^[A-Z]{4}$/.test(h)){ const c=document.getElementById("code"); if (c) c.value=h; }
+});
+
+boot();
+})();
+</script>
+
+</body>
+</html>
