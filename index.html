@@ -338,7 +338,7 @@ function subsetSum(arr, target){
 let db=null, myId=null, canWrite=true;
 let roomCode=null, S=null, unsub=null, loadTimer=null, busy=false, loadNote="";
 let sel = { hand:null, table:new Set() };
-let errMsg = "", lastSeenSeq = -1, reviewTab = "points", holdReviewUntil = 0;
+let errMsg = "", lastSeenSeq = -1, reviewTab = "points", holdReviewUntil = 0, justJoined = false;
 const app = document.getElementById("app");
 
 function toast(msg){ const t=document.getElementById("toast"); t.textContent=msg; t.hidden=false; clearTimeout(toast._t); toast._t=setTimeout(()=>t.hidden=true, 4200); }
@@ -395,7 +395,7 @@ function renderLobby(prefill){
     <h3>Make a new room</h3>
     <div class="field"><label for="target" class="label">Play to</label>
       <select id="target"><option value="11">11 points</option><option value="16">16 points</option><option value="21">21 points</option></select></div>
-    <label class="check"><input type="checkbox" id="napola" checked><span><b>Napola</b><br><span class="muted">Ace, 2 and 3 of Coins score 3, plus 1 for each next Coin in a row.</span></span></label>
+    <label class="check"><input type="checkbox" id="napola"><span><b>Napola</b><br><span class="muted">Optional bonus: Ace, 2 and 3 of Coins score 3, plus 1 for each next Coin in a row.</span></span></label>
     <label class="check"><input type="checkbox" id="strict"><span><b>Strict capture</b><br><span class="muted">Off: you may lay a card down even if it could take something (your partner can tease you). On: the game refuses it.</span></span></label>
     <button class="btn primary" id="createBtn">Create room</button>
   </div>
@@ -461,6 +461,7 @@ async function joinRoom(raw){
       return s;
     });
     if (full){ toast("That room already has two players."); return; }
+    justJoined = true;
     openRoom(code);
   } catch(e){ writeFail(e); }
   finally { busy=false; }
@@ -479,13 +480,17 @@ function openRoom(code){
     if (!snap.metadata.fromCache){ clearTimeout(loadTimer); loadNote=""; }
     if (!snap.exists){ if (!snap.metadata.fromCache){ leaveRoom(`Room ${code} doesn't exist any more.`); } return; }
     const next = snap.data();
-    const prev = S, before = prev && prev.phase !== "review" ? snapRects() : null;
+    // Someone who just joined sees the first deal as if they'd been waiting at the table.
+    let prev = S;
+    if (!prev && justJoined){ prev = { phase:"waiting", round:0, seq:-1, turn:-1, hands:[[],[]] }; }
+    justJoined = false;
+    const before = prev && prev.phase !== "review" ? snapRects() : null;
     if (S && next.seq !== S.seq){ sel = { hand:null, table:new Set() }; errMsg=""; }
     // Let the last card of a round land before the results sheet covers the table.
     if (prev && prev.phase === "playing" && next.phase === "review" && motionOK()){ holdReviewUntil = Date.now() + 2200; setTimeout(render, 2250); }
     S = next;
     render();
-    if (prev && (next.seq !== prev.seq)) animateTransition(prev, next, before);
+    if (prev && (next.seq !== prev.seq)){ animateTransition(prev, next, before); soundTransition(prev, next); }
     maybeAdvance();
   }, e => { clearTimeout(loadTimer); loadNote = "Lost the connection to this table. Reload the page to reconnect."; render(); });
 }
@@ -520,7 +525,7 @@ function headerHTML(me){
       <span>${esc(nameOf(b))} <b>${S.scores[b]}</b></span>
       <span class="muted">to ${S.target}</span>
     </div>
-    <div class="row"><button class="btn small" id="rulesBtn">Rules</button><button class="btn small" id="leave">Leave</button></div>
+    <div class="row"><button class="btn small" id="soundBtn" aria-pressed="${sfx.on}">${sfx.on ? "Sound on" : "Sound off"}</button><button class="btn small" id="rulesBtn">Rules</button><button class="btn small" id="leave">Leave</button></div>
   </div>${loadNote?`<div class="err">${esc(loadNote)}</div>`:""}`;
 }
 function wireHeader(){
@@ -528,6 +533,8 @@ function wireHeader(){
   if (cc) cc.onclick = async () => { try { await navigator.clipboard.writeText(S.code); toast("Room code copied."); } catch { toast("Room code: " + S.code); } };
   const lv = document.getElementById("leave");
   if (lv) lv.onclick = () => leaveRoom("You left the table. Join again any time with code " + S.code + ".");
+  const sb = document.getElementById("soundBtn");
+  if (sb) sb.onclick = () => { const on = sfx.toggle(); sb.textContent = on ? "Sound on" : "Sound off"; sb.setAttribute("aria-pressed", on); if (on) sfx.play("turn"); };
   const rb = document.getElementById("rulesBtn");
   if (rb) rb.onclick = showRules;
 }
@@ -622,6 +629,78 @@ function burst(text, r){
   b.animate([{ transform:"translate(-50%,-50%) scale(.3) rotate(-8deg)", opacity:0 }, { transform:"translate(-50%,-50%) scale(1.12) rotate(-3deg)", opacity:1, offset:.35 },
     { transform:"translate(-50%,-50%) scale(1) rotate(-3deg)", opacity:1, offset:.75 }, { transform:"translate(-50%,-62%) scale(1)", opacity:0 }],
     { duration:1400, easing:"ease-out" }).finished.then(() => b.remove(), () => b.remove());
+}
+
+// ---------- sound (synthesized with Web Audio; starts after the first tap, as browsers require) ----------
+const sfx = (() => {
+  let ctx = null, master = null, noiseBuf = null, on = store.get("sound") !== "off";
+  function ensure(){
+    if (!ctx){ try { ctx = new (window.AudioContext || window.webkitAudioContext)(); master = ctx.createGain(); master.gain.value = .8; master.connect(ctx.destination); } catch { return null; } }
+    if (ctx.state === "suspended") ctx.resume().catch(()=>{});
+    return ctx;
+  }
+  addEventListener("pointerdown", ensure, { passive:true });
+  addEventListener("keydown", ensure);
+  function noise(){
+    if (!noiseBuf){ noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); const d = noiseBuf.getChannelData(0); for (let i=0;i<d.length;i++) d[i] = Math.random()*2-1; }
+    return noiseBuf;
+  }
+  function env(g, t, peak, dur, attack=.004){ g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(peak, t+attack); g.gain.exponentialRampToValueAtTime(.0001, t+dur); }
+  // A short burst of filtered noise: the paper sound of a card.
+  function swish(at, { dur=.07, freq=3000, to=null, q=.8, gain=.3, type="bandpass" } = {}){
+    const t = ctx.currentTime + at, src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = noise(); f.type = type; f.Q.value = q; f.frequency.setValueAtTime(freq, t);
+    if (to) f.frequency.exponentialRampToValueAtTime(to, t+dur);
+    env(g, t, gain, dur); src.connect(f).connect(g).connect(master);
+    src.start(t, Math.random()*.5); src.stop(t+dur+.05);
+  }
+  function tone(at, freq, { dur=.4, gain=.08, type="sine" } = {}){
+    const t = ctx.currentTime + at, o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type; o.frequency.value = freq; env(g, t, gain, dur, .01); o.connect(g).connect(master); o.start(t); o.stop(t+dur+.05);
+  }
+  const sounds = {
+    tick:  at => tone(at, 1500, { dur:.05, gain:.035, type:"triangle" }),
+    flick: at => swish(at, { dur:.08, freq:3400, q:.9, gain:.22 }),
+    place: at => { swish(at, { dur:.07, freq:700, q:.5, gain:.55, type:"lowpass" }); swish(at, { dur:.03, freq:4500, q:2, gain:.1 }); },
+    sweep: at => swish(at, { dur:.38, freq:500, to:3800, q:.6, gain:.2 }),
+    turn:  at => { tone(at, 880, { dur:.35, gain:.06 }); tone(at+.13, 1320, { dur:.45, gain:.05 }); },
+    scopa: at => [523, 659, 784, 1047].forEach((f,i) => tone(at + i*.085, f, { dur:.55, gain:.08, type:"triangle" })),
+    round: at => [392, 494, 587, 784].forEach((f,i) => tone(at + i*.04, f, { dur:1.4, gain:.045, type:"triangle" })),
+  };
+  return {
+    get on(){ return on; },
+    toggle(){ on = !on; store.set("sound", on ? null : "off"); if (on) ensure(); return on; },
+    play(name, at=0){
+      if (!on || document.hidden) return;
+      const c = ensure(); if (!c || c.state !== "running") return;
+      try { sounds[name](Math.max(0, at)); } catch {}
+    }
+  };
+})();
+
+// Sounds follow the same timeline as the animations (in seconds).
+function soundTransition(prev, next){
+  const me = mySeat(); if (me < 0) return;
+  const newRound = prev.round !== next.round || prev.phase === "waiting";
+  const m = next.lastMove;
+  let t = 0;
+  if (newRound){
+    for (let i=0; i<10; i++) sfx.play("flick", i*.11);
+    t = 1.2;
+  } else if (m){
+    sfx.play("flick", 0);
+    if (!m.takes.length){ sfx.play("place", .5); t = .64; }
+    else {
+      sfx.play("place", .45);
+      if (m.scopa) sfx.play("scopa", .5);
+      const sweepAt = .45 + (m.scopa ? .65 : .42);
+      sfx.play("sweep", sweepAt);
+      t = sweepAt + .6;
+    }
+    if (m.dealt){ for (let i=0; i<6; i++) sfx.play("flick", t + .12 + i*.11); t += .9; }
+  }
+  if (next.phase === "review" && prev.phase === "playing") sfx.play("round", 2.2);
+  else if (next.phase === "playing" && next.turn === me && (prev.turn !== me || newRound)) sfx.play("turn", t + .15);
 }
 
 let animating = 0;
@@ -730,6 +809,7 @@ function renderGame(me){
 
 function tapCard(zone, c){
   if (!S || S.phase!=="playing" || S.turn!==mySeat()) return;
+  sfx.play("tick");
   errMsg = "";
   if (zone==="hand") sel.hand = sel.hand===c ? null : c;
   else sel.table.has(c) ? sel.table.delete(c) : sel.table.add(c);
