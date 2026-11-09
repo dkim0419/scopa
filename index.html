@@ -512,6 +512,21 @@ function openRoom(code){
   loadTimer = setTimeout(() => { loadNote = "The table can't be reached yet. It will appear when the connection comes back."; render(); }, 10000);
   unsub = roomRef(code).onSnapshot(snap => {
     if (!snap.metadata.fromCache){ clearTimeout(loadTimer); loadNote=""; }
+    // A move that arrives mid-animation waits its turn, so the current animation can finish.
+    if (animating && Date.now() < animUntil){ pendingSnap = { snap, code }; clearTimeout(flushTimer); flushTimer = setTimeout(flushPending, animUntil - Date.now() + 20); return; }
+    handleSnap(snap, code);
+  }, e => { clearTimeout(loadTimer); loadNote = "Lost the connection to this table. Reload the page to reconnect."; render(); });
+}
+
+let pendingSnap = null, flushTimer = null;
+function flushPending(){
+  clearTimeout(flushTimer);
+  const p = pendingSnap; pendingSnap = null;
+  if (p && p.code === roomCode) handleSnap(p.snap, p.code);
+}
+
+function handleSnap(snap, code){
+  {
     if (!snap.exists){ if (!snap.metadata.fromCache){ leaveRoom(`Room ${code} doesn't exist any more.`); } return; }
     const next = snap.data();
     // The server confirming a write we already show changes nothing; redrawing would cut animations short.
@@ -528,7 +543,7 @@ function openRoom(code){
     render();
     if (prev && (next.seq !== prev.seq)){ animateTransition(prev, next, before); soundTransition(prev, next); }
     maybeAdvance();
-  }, e => { clearTimeout(loadTimer); loadNote = "Lost the connection to this table. Reload the page to reconnect."; render(); });
+  }
 }
 
 function leaveRoom(msg){
@@ -792,12 +807,13 @@ function soundTransition(prev, next){
 }
 
 const newRoundOf = (prev, next) => prev.round !== next.round || prev.phase === "waiting";
-let animating = 0;
+let animating = 0, animUntil = 0;
 async function animateTransition(prev, next, before){
   if (next.phase === "ended") return;
   if (!motionOK() || !before) return;
   const me = mySeat(); if (me < 0) return;
-  animating++;
+  animating++; animUntil = Date.now() + 4000; // safety limit, e.g. if the phone sleeps mid-animation
+  const dealt = [];
   try {
     const after = snapRects();
     // Find newly dealt cards now and hide them, so they never show in place before flying in.
@@ -853,15 +869,16 @@ async function animateTransition(prev, next, before){
     // Deals: new cards come off the deck, one at a time.
     const deckR = after.deck || before.deck;
     const from = boxIn(deckR, 38);
-    const reveal = (el, opts) => { if (!el.isConnected) return; el.style.visibility = ""; if (from) flyFrom(el, from, opts); };
+    const reveal = (el, opts) => { if (!el.isConnected) return; el.style.visibility = ""; if (from) dealt.push(flyFrom(el, from, opts)); };
     let i = 0;
     for (const el of tableNew) reveal(el, { duration:460, delay: dealDelay + (i++)*110, rotate:-6 });
     if (dealing){
       const order = []; for (let k=0; k<3; k++){ if (opBacks[k]) order.push(opBacks[k]); if (myNew[k]) order.push(myNew[k]); }
       order.forEach(el => reveal(el, { duration:440, delay: dealDelay + (i++)*110, rotate: el.classList.contains("back") ? 10 : -10 }));
     }
+    await Promise.all(dealt);
   } catch(e){ console.error(e); app.querySelectorAll("[style*='visibility']").forEach(el => { el.style.visibility = ""; }); }
-  finally { animating--; }
+  finally { animating--; if (!animating && pendingSnap) setTimeout(flushPending, 0); }
 }
 
 function renderGame(me){
@@ -899,7 +916,7 @@ function renderGame(me){
   wireHeader();
   app.querySelectorAll("button.card").forEach(b => b.onclick = () => tapCard(b.dataset.zone, b.dataset.card));
   const pb = document.getElementById("playBtn"); if (pb) pb.onclick = play;
-  const cb = document.getElementById("clearBtn"); if (cb) cb.onclick = () => { sel={hand:null,table:new Set()}; errMsg=""; render(); };
+  const cb = document.getElementById("clearBtn"); if (cb) cb.onclick = () => { sel={hand:null,table:new Set()}; errMsg=""; updateSelection(); };
 }
 
 function tapCard(zone, c){
@@ -908,7 +925,17 @@ function tapCard(zone, c){
   errMsg = "";
   if (zone==="hand") sel.hand = sel.hand===c ? null : c;
   else sel.table.has(c) ? sel.table.delete(c) : sel.table.add(c);
-  render();
+  updateSelection();
+}
+// Selection changes touch only classes and labels, never redraw the board (which would cut animations short).
+function updateSelection(){
+  const n = sel.table.size;
+  app.querySelectorAll("#hand button.card").forEach(el => { const on = sel.hand === el.dataset.card; el.classList.toggle("sel", on); el.setAttribute("aria-pressed", on); });
+  app.querySelectorAll("#table button.card").forEach(el => { const on = sel.table.has(el.dataset.card); el.classList.toggle("sel", on); el.setAttribute("aria-pressed", on); });
+  const pb = document.getElementById("playBtn");
+  if (pb){ pb.disabled = !sel.hand; pb.textContent = !sel.hand ? "Pick a card" : n ? `Take ${n} card${n>1?"s":""}` : "Lay down"; }
+  const cb = document.getElementById("clearBtn"); if (cb) cb.disabled = !(sel.hand || n);
+  const er = app.querySelector(".err[role=alert]"); if (er) er.textContent = errMsg;
 }
 
 async function play(){
@@ -916,7 +943,7 @@ async function play(){
   if (busy || !S || S.phase!=="playing" || S.turn!==me || !sel.hand) return;
   const takes = S.table.filter(c => sel.table.has(c));
   const problem = checkCapture(S, sel.hand, takes);
-  if (problem){ errMsg = problem; render(); return; }
+  if (problem){ errMsg = problem; updateSelection(); return; }
   busy = true;
   const next = applyMove(S, me, sel.hand, takes);
   try { await roomRef(roomCode).set(next); }
