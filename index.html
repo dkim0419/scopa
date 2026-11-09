@@ -520,7 +520,7 @@ function openRoom(code){
     let prev = S;
     if (!prev && justJoined){ prev = { phase:"waiting", round:0, seq:-1, turn:-1, hands:[[],[]] }; }
     justJoined = false;
-    const before = prev && prev.phase !== "review" ? snapRects() : null;
+    const before = prev ? snapRects() : null;
     if (S && next.seq !== S.seq){ sel = { hand:null, table:new Set() }; errMsg=""; }
     // Let the last card of a round land before the results sheet covers the table.
     if (prev && prev.phase === "playing" && next.phase === "review" && motionOK()){ holdReviewUntil = Date.now() + 2200; setTimeout(render, 2250); }
