@@ -10,6 +10,7 @@ Play it at **https://dkim0419.github.io/scopa/** once GitHub Pages is on.
 - Rooms live in Cloud Firestore (`rooms/{CODE}`) in the `scopa-41d37` Firebase project. Players sign in anonymously behind the scenes, so nobody makes an account.
 - `firebase.js` is the Firebase JS SDK (v11.10.0: app, auth, firestore) bundled into one file, so the page loads no outside scripts.
 - It's an installable web app: `manifest.webmanifest` (name, icons, full-screen launch) and `sw.js` (caches the app's own files so it opens instantly and offline; the page and `firebase.js` are fetched fresh when online, so updates need no version bump). Icons are in `icons/`.
+- **Bump `<meta name="app-build">` in `index.html` with every change.** Open copies of the app compare it with the live site and offer an Update button, since an installed app can stay open for days without reloading.
 - `firestore.rules` holds the security rules. Paste them into Firebase console → Firestore → Rules after any change.
 
 ## Setup checklist
