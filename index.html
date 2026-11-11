@@ -12,7 +12,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Scopa">
-<meta name="app-build" content="2026-11-11.1">
+<meta name="app-build" content="2026-11-11.2">
 <title>Scopa a Due</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700;800&family=Alegreya+Sans:wght@400;500;700&display=swap">
@@ -328,10 +328,9 @@ function endRound(s, move){
 function checkCapture(s, card, takes){
   const v = val(card);
   if (!takes.length){
-    if (s.strict){
-      const tv = s.table.map(val);
-      if (tv.includes(v) || subsetSum(tv, v)) return "Strict rules are on: this card can take something, so it can't be laid down.";
-    }
+    // Capturing is mandatory, as in the official rules.
+    const tv = s.table.map(val);
+    if (tv.includes(v) || subsetSum(tv, v)) return "This card can take something, and taking is required, so it can't be laid down.";
     return null;
   }
   const sum = takes.reduce((a,c)=>a+val(c),0);
@@ -461,7 +460,6 @@ function renderLobby(prefill){
     <div class="field"><label for="target" class="label">Play to</label>
       <select id="target"><option value="11">11 points</option><option value="16">16 points</option><option value="21">21 points</option></select></div>
     <label class="check"><input type="checkbox" id="napola"><span><b>Napola</b><br><span class="muted">Optional bonus: Ace, 2 and 3 of Coins score 3, plus 1 for each next Coin in a row.</span></span></label>
-    <label class="check"><input type="checkbox" id="strict" checked><span><b>Strict capture</b><br><span class="muted">On: if your card can take something, you have to take it, as in the official rules. Off: you may lay it down anyway.</span></span></label>
     <button class="btn primary" id="createBtn">Create room</button>
   </div>
   <details><summary>How to play</summary>${rulesHTML()}</details>`;
@@ -481,7 +479,7 @@ function rulesHTML(){
   <li>40 Neapolitan cards: Coins, Cups, Swords, Clubs, 1 to 7 plus Fante (8), Cavallo (9) and Re (10).</li>
   <li>Each player gets 3 cards, 4 go face up on the table. When both hands are empty, 3 more each until the deck runs out.</li>
   <li>On your turn, play one card. Tap it, then tap the table cards you want to take, then tap <b>Take</b>. Take one card of the same value, or several cards that add up to it. If a single card of the same value is there, you must take that one.</li>
-  <li>If you take nothing, tap <b>Lay down</b>. Clearing the whole table is a <b>scopa</b> (1 point), except on the very last card of the round.</li>
+  <li>If your card can take something, you must take it. Only a card that can't take anything is laid down: tap <b>Lay down</b>. Clearing the whole table is a <b>scopa</b> (1 point), except on the very last card of the round.</li>
   <li>At the end of the round, cards left on the table go to whoever took last.</li>
   <li>Points each round: most cards, most Coins, the Settebello (7 of Coins), Primiera (best card per suit: 7=21, 6=18, Ace=16, 5=15, 4=14, 3=13, 2=12, faces=10), Napola if on, and 1 per scopa.</li>
   <li>First to the target wins. A tie at or above it plays another round.</li></ul>`;
@@ -496,7 +494,7 @@ async function createRoom(){
     for (let i=0;i<5;i++){ code = genCode(); const snap = await roomRef(code).get(); if (!snap.exists) break; }
     const s = {
       code, createdAt: Date.now(), target: +document.getElementById("target").value,
-      napola: document.getElementById("napola").checked, strict: document.getElementById("strict").checked,
+      napola: document.getElementById("napola").checked,
       players: [{ id:myId, name:myName() }, null], phase:"waiting", scores:[0,0], round:0,
       dealer: crypto.getRandomValues(new Uint8Array(1))[0] % 2, seq:0, ready:{p0:false,p1:false}
     };
@@ -624,7 +622,7 @@ function wireHeader(){
 }
 function showRules(){
   const o = document.createElement("div"); o.className="overlay"; o.setAttribute("role","dialog"); o.setAttribute("aria-label","Rules");
-  o.innerHTML = `<div class="sheet"><h2>How to play</h2>${rulesHTML()}<p class="muted">This room: to ${S.target} points · Napola ${S.napola?"on":"off"} · Strict capture ${S.strict?"on":"off"}</p>
+  o.innerHTML = `<div class="sheet"><h2>How to play</h2>${rulesHTML()}<p class="muted">This room: to ${S.target} points · Napola ${S.napola?"on":"off"}</p>
   <label class="check"><input type="checkbox" id="numsToggle" ${document.body.classList.contains("no-nums")?"":"checked"}><span><b>Number tags on cards</b><br><span class="muted">A small value in each card's corner. Real Napoletane cards don't have them; switch off to count the pips yourself. Only changes your screen.</span></span></label>
   <p class="detail">Card art: a Neapolitan deck printed in Naples in 1902, traced by the woodcut-napoletane project (public domain, CC0).</p>
   <div><button class="btn primary" id="closeRules">Back to the table</button></div></div>`;
